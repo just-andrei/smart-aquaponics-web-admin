@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "881996302272",
+    "project_id": "smart-aquaponics-e8f5f",
+    "storage_bucket": "smart-aquaponics-e8f5f.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:881996302272:android:de7dd620786a2f3b40ea25",
+        "android_client_info": {
+          "package_name": "com.example.smart_aquaponics"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBJ_KHOTY2iVmSuCSvXPV1hnmAKtoF9PrE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
