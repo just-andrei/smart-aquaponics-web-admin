@@ -4,6 +4,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'admin_dashboard.dart';
 import 'aquaponics_colors.dart';
 import 'firebase_options.dart';
+import 'sign_in_page.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -17,13 +18,6 @@ class AppBootstrap extends StatelessWidget {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
-    if (FirebaseAuth.instance.currentUser == null) {
-      try {
-        await FirebaseAuth.instance.signInAnonymously();
-      } on FirebaseAuthException {
-        // Anonymous auth can be disabled/admin-restricted in some projects.
-      }
-    }
   }
 
   @override
@@ -109,9 +103,20 @@ class _MyAppState extends State<MyApp> {
           brightness: Brightness.dark,
         ),
       ),
-      home: AdminDashboard(
-        themeMode: _themeMode,
-        onThemeChanged: _toggleTheme,
+      home: StreamBuilder<User?>(
+        stream: FirebaseAuth.instance.authStateChanges(),
+        builder: (context, snapshot) {
+          if (snapshot.hasData) {
+            return AdminDashboard(
+              themeMode: _themeMode,
+              onThemeChanged: _toggleTheme,
+            );
+          }
+          return SignInPage(
+            themeMode: _themeMode,
+            onThemeModeChanged: _toggleTheme,
+          );
+        },
       ),
     );
   }

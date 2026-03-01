@@ -19,6 +19,7 @@ class MasterSetsView extends StatefulWidget {
 
 class _MasterSetsViewState extends State<MasterSetsView> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final TextEditingController _searchCtrl = TextEditingController();
   String? _selectedDocId;
 
   double _toDouble(dynamic value) {
@@ -55,6 +56,19 @@ class _MasterSetsViewState extends State<MasterSetsView> {
     };
   }
 
+  bool _matchesSetNameSearch(QueryDocumentSnapshot doc, String query) {
+    if (query.isEmpty) return true;
+    final data = doc.data() as Map<String, dynamic>;
+    final setName = _cleanName(data['set_name']).toLowerCase();
+    return setName.contains(query.toLowerCase());
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
   Future<void> _extractExistingMasterSets() async {
     try {
       final snapshot = await _firestore.collection('master_sets').get();
@@ -76,9 +90,6 @@ class _MasterSetsViewState extends State<MasterSetsView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Master Templates'),
-      ),
       body: StreamBuilder<QuerySnapshot>(
         stream: _firestore.collection('master_sets').snapshots(),
         builder: (context, snapshot) {
@@ -95,28 +106,11 @@ class _MasterSetsViewState extends State<MasterSetsView> {
             return const Center(child: CircularProgressIndicator());
           }
 
-          final data = snapshot.data?.docs ?? [];
-          QueryDocumentSnapshot? selectedDoc;
-          for (final doc in data) {
-            if (doc.id == _selectedDocId) {
-              selectedDoc = doc;
-              break;
-            }
-          }
-
-          final source = _MasterSetsDataSource(
-            data,
-            selectedDocId: _selectedDocId,
-            onSelect: (id) {
-              setState(() {
-                _selectedDocId = id;
-              });
-            },
-          );
+          final allData = snapshot.data?.docs ?? [];
 
           return LayoutBuilder(
             builder: (context, constraints) {
-              if (data.isEmpty) {
+              if (allData.isEmpty) {
                 return Center(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
@@ -140,7 +134,7 @@ class _MasterSetsViewState extends State<MasterSetsView> {
 
               final rowsPerPage = math.min(
                 PaginatedDataTable.defaultRowsPerPage,
-                math.max(1, data.length),
+                math.max(1, allData.length),
               );
               const baseTableWidth = 1080.0;
 
@@ -151,74 +145,143 @@ class _MasterSetsViewState extends State<MasterSetsView> {
                   children: [
                     Align(
                       alignment: Alignment.centerRight,
-                      child: Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          OutlinedButton(
-                            onPressed: () => _showSetDialog(null),
-                            child: const Text('Create'),
-                          ),
-                          OutlinedButton(
-                            onPressed: selectedDoc == null
-                                ? null
-                                : () => _editSet(selectedDoc!),
-                            child: const Text('Update'),
-                          ),
-                          FilledButton(
-                            onPressed: selectedDoc == null
-                                ? null
-                                : () {
-                                    final data =
-                                        selectedDoc!.data() as Map<String, dynamic>;
-                                    final name =
-                                        (data['set_name'] ?? 'Unnamed Set')
-                                            .toString();
-                                    _deleteSet(selectedDoc.id, name);
-                                  },
-                            style: FilledButton.styleFrom(
-                              backgroundColor: Theme.of(context).colorScheme.error,
-                            ),
-                            child: const Text('Delete'),
-                          ),
-                        ],
+                      child: ValueListenableBuilder<TextEditingValue>(
+                        valueListenable: _searchCtrl,
+                        builder: (context, value, _) {
+                          final query = value.text.trim();
+                          final filteredData = allData
+                              .where((doc) => _matchesSetNameSearch(doc, query))
+                              .toList();
+                          QueryDocumentSnapshot? selectedDoc;
+                          for (final doc in filteredData) {
+                            if (doc.id == _selectedDocId) {
+                              selectedDoc = doc;
+                              break;
+                            }
+                          }
+
+                          return Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              OutlinedButton(
+                                onPressed: () => _showSetDialog(null),
+                                child: const Text('Create'),
+                              ),
+                              OutlinedButton(
+                                onPressed: selectedDoc == null
+                                    ? null
+                                    : () => _editSet(selectedDoc!),
+                                child: const Text('Update'),
+                              ),
+                              FilledButton(
+                                onPressed: selectedDoc == null
+                                    ? null
+                                    : () {
+                                        final data =
+                                            selectedDoc!.data() as Map<String, dynamic>;
+                                        final name =
+                                            (data['set_name'] ?? 'Unnamed Set')
+                                                .toString();
+                                        _deleteSet(selectedDoc.id, name);
+                                      },
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: Theme.of(context).colorScheme.error,
+                                ),
+                                child: const Text('Delete'),
+                              ),
+                            ],
+                          );
+                        },
                       ),
                     ),
                     const SizedBox(height: 8),
-                    ClipRect(
-                      child: FittedBox(
-                        fit: BoxFit.fitWidth,
-                        alignment: Alignment.topLeft,
-                        child: SizedBox(
-                          width: baseTableWidth,
-                          child: PaginatedDataTable(
-                            header: const Text('System Sets'),
-                            columnSpacing: 12,
-                            horizontalMargin: 10,
-                            headingRowHeight: 48,
-                            dataRowMinHeight: 44,
-                            dataRowMaxHeight: 44,
-                            columns: const [
-                              DataColumn(label: Text('Set Name')),
-                              DataColumn(label: Text('Temp (Min-Max)')),
-                              DataColumn(label: Text('pH (Min-Max)')),
-                              DataColumn(label: Text('DO (Min-Max)')),
-                              DataColumn(label: Text('Salinity (Min-Max)')),
-                              DataColumn(label: Text('Turbidity (Min-Max)')),
-                              DataColumn(label: Text('Ammonia (Min-Max)')),
-                            ],
-                            source: source,
-                            rowsPerPage: rowsPerPage,
-                            showCheckboxColumn: false,
-                            actions: [
-                              IconButton(
-                                icon: const Icon(Icons.refresh),
-                                onPressed: _extractExistingMasterSets,
-                              ),
-                            ],
+                    SizedBox(
+                      width: 360,
+                      child: TextField(
+                        controller: _searchCtrl,
+                        decoration: InputDecoration(
+                          labelText: 'Search by Set Name',
+                          prefixIcon: const Icon(Icons.search),
+                          suffixIcon: IconButton(
+                            icon: const Icon(Icons.clear),
+                            onPressed: () => _searchCtrl.clear(),
                           ),
+                          border: const OutlineInputBorder(),
                         ),
                       ),
+                    ),
+                    const SizedBox(height: 8),
+                    ValueListenableBuilder<TextEditingValue>(
+                      valueListenable: _searchCtrl,
+                      builder: (context, value, _) {
+                        final query = value.text.trim();
+                        final filteredData = allData
+                            .where((doc) => _matchesSetNameSearch(doc, query))
+                            .toList();
+                        final filteredRowsPerPage = math.min(
+                          rowsPerPage,
+                          math.max(1, filteredData.length),
+                        );
+                        final source = _MasterSetsDataSource(
+                          filteredData,
+                          selectedDocId: _selectedDocId,
+                          onSelect: (id) {
+                            setState(() {
+                              _selectedDocId = id;
+                            });
+                          },
+                        );
+
+                        if (filteredData.isEmpty) {
+                          return const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 16),
+                            child: Text(
+                              'No sets match your search.',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          );
+                        }
+
+                        return ClipRect(
+                          child: FittedBox(
+                            fit: BoxFit.fitWidth,
+                            alignment: Alignment.topLeft,
+                            child: SizedBox(
+                              width: baseTableWidth,
+                              child: PaginatedDataTable(
+                                header: const Text('System Sets'),
+                                columnSpacing: 12,
+                                horizontalMargin: 10,
+                                headingRowHeight: 48,
+                                dataRowMinHeight: 44,
+                                dataRowMaxHeight: 44,
+                                columns: const [
+                                  DataColumn(label: Text('Set Name')),
+                                  DataColumn(label: Text('Temp (Min-Max)')),
+                                  DataColumn(label: Text('pH (Min-Max)')),
+                                  DataColumn(label: Text('DO (Min-Max)')),
+                                  DataColumn(label: Text('Salinity (Min-Max)')),
+                                  DataColumn(label: Text('Turbidity (Min-Max)')),
+                                  DataColumn(label: Text('Ammonia (Min-Max)')),
+                                ],
+                                source: source,
+                                rowsPerPage: filteredRowsPerPage,
+                                showCheckboxColumn: false,
+                                actions: [
+                                  IconButton(
+                                    icon: const Icon(Icons.refresh),
+                                    onPressed: _extractExistingMasterSets,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      },
                     ),
                   ],
                 ),

@@ -1,9 +1,7 @@
-import 'dart:async';
-import 'dart:math';
-import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'aquaponics_colors.dart';
+import 'package:flutter/material.dart';
+
+const _teal = Color(0xFF0097A7);
 
 class DashboardOverview extends StatefulWidget {
   const DashboardOverview({super.key});
@@ -13,313 +11,335 @@ class DashboardOverview extends StatefulWidget {
 }
 
 class _DashboardOverviewState extends State<DashboardOverview> {
-  // Simulated sensor data
-  double temperature = 24.5;
-  double ph = 6.8;
-  double oxygen = 7.2;
-  double salinity = 0.8;
-  double ammonia = 0.2;
-  double turbidity = 3.0;
-  double battery = 82.0;
-  int uptime = 99;
-  int alertCount = 1;
-  String healthStatus = "Excellent";
-  String alertDetail = "1 Refill Required";
-
-  // Dispenser levels (percentages)
-  double fishFeed = 75;
-  double phUp = 60;
-  double phDown = 25;
-
-  Timer? timer;
-
-  @override
-  void initState() {
-    super.initState();
-    timer = Timer.periodic(const Duration(seconds: 3), (_) => simulateData());
+  String _safeString(dynamic value, {String fallback = ''}) {
+    final text = value?.toString().trim() ?? '';
+    return text.isEmpty ? fallback : text;
   }
 
-  @override
-  void dispose() {
-    timer?.cancel();
-    super.dispose();
+  String _fullName(Map<String, dynamic> userData) {
+    final first = _safeString(userData['first_name']).isNotEmpty
+        ? _safeString(userData['first_name'])
+        : _safeString(userData['firstName']);
+    final last = _safeString(userData['last_name']).isNotEmpty
+        ? _safeString(userData['last_name'])
+        : _safeString(userData['lastName']);
+    final name = '$first $last'.trim();
+    return name.isEmpty ? _safeString(userData['email'], fallback: 'Unknown User') : name;
   }
 
-  Future<void> getDetectedUserData() async {
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user != null) {
-        final snapshot = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .get();
-
-        if (snapshot.exists) {
-          // Logic to handle user data
-        }
-      }
-    } catch (e) {
-      debugPrint("Firebase error: $e");
-    }
-  }
-
-  void simulateData() {
-    if (!mounted) return;
-    setState(() {
-      final rand = Random();
-      temperature = (temperature + (rand.nextDouble() - 0.5) * 0.3).clamp(18, 32);
-      ph = (ph + (rand.nextDouble() - 0.5) * 0.1).clamp(5.0, 9.0);
-      oxygen = (oxygen + (rand.nextDouble() - 0.5) * 0.2).clamp(3.0, 12.0);
-      salinity = (salinity + (rand.nextDouble() - 0.5) * 0.05).clamp(0, 3);
-      ammonia = (ammonia + (rand.nextDouble() - 0.5) * 0.05).clamp(0, 1);
-      turbidity = (turbidity + (rand.nextDouble() - 0.5) * 0.5).clamp(0, 10);
-      battery = (battery + (rand.nextDouble() - 0.5) * 1.5).clamp(0, 100);
-      uptime = 99 + rand.nextInt(2);
-      
-      fishFeed = (fishFeed - rand.nextDouble() * 0.3).clamp(0, 100);
-      phUp = (phUp - rand.nextDouble() * 0.3).clamp(0, 100);
-      phDown = (phDown - rand.nextDouble() * 0.3).clamp(0, 100);
-
-      List<String> refillAlerts = [];
-      if (phDown < 20) refillAlerts.add('pH Down');
-      if (phUp < 30) refillAlerts.add('pH Up');
-      if (fishFeed < 20) refillAlerts.add('Fish Feed');
-      alertCount = refillAlerts.length;
-      healthStatus = alertCount > 0 ? 'Warning' : 'Excellent';
-      alertDetail = alertCount == 0
-          ? 'All dispensers at good level'
-          : refillAlerts.length == 1
-              ? '${refillAlerts[0]} dispenser needs refill'
-              : '${refillAlerts.length} dispensers need refill';
-    });
+  DateTime _readTime(Map<String, dynamic> data) {
+    final reportedAt = data['reported_at'];
+    final createdAt = data['created_at'];
+    final updatedAt = data['updated_at'];
+    if (reportedAt is Timestamp) return reportedAt.toDate();
+    if (createdAt is Timestamp) return createdAt.toDate();
+    if (updatedAt is Timestamp) return updatedAt.toDate();
+    return DateTime.fromMillisecondsSinceEpoch(0);
   }
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Summary Cards
-          Wrap(
-            spacing: 16,
-            runSpacing: 16,
-            children: [
-              _summaryCard(
-                icon: Icons.group,
-                label: 'Total Users',
-                value: '124',
-                detail: '+12 this week',
-                color: AquaponicsColors.primaryAccent,
-                context: context,
-              ),
-              _summaryCard(
-                icon: Icons.grid_view,
-                label: 'Active Systems',
-                value: '89',
-                detail: '98% Operational',
-                color: AquaponicsColors.statusSafe,
-                context: context,
-              ),
-              _summaryCard(
-                icon: Icons.battery_full,
-                label: 'Power Status',
-                value: '${battery.toStringAsFixed(0)}%',
-                detail: 'Discharging',
-                color: AquaponicsColors.primaryAccent,
-                context: context,
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          Text(
-            'Water Quality Status',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-              fontSize: 18,
+    final firestore = FirebaseFirestore.instance;
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: firestore.collection('user').snapshots(),
+      builder: (context, usersSnapshot) {
+        if (usersSnapshot.hasError) {
+          return Center(
+            child: Text(
+              'Error loading users: ${usersSnapshot.error}',
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
             ),
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: [
-              _statCard(Icons.thermostat, 'Temperature', '${temperature.toStringAsFixed(1)}°C', '22–28°C', _getStatus(temperature, 22, 28, 18, 32), context),
-              _statCard(Icons.science, 'pH Level', ph.toStringAsFixed(1), '6.5–7.5', _getStatus(ph, 6.5, 7.5, 6.0, 8.0), context),
-              _statCard(Icons.bubble_chart, 'Dissolved Oxygen', '${oxygen.toStringAsFixed(1)} mg/L', '> 5.0 mg/L', _getStatus(oxygen, 5.0, 10, 4.0, 12), context),
-              _statCard(Icons.opacity, 'Salinity', '${salinity.toStringAsFixed(1)} ppt', '0–2 ppt', _getStatus(salinity, 0, 2, -0.5, 3), context),
-              _statCard(Icons.biotech, 'Ammonia', '${ammonia.toStringAsFixed(2)} mg/L', '< 0.5 mg/L', _getStatus(ammonia, 0, 0.5, 0.5, 1), context),
-              _statCard(Icons.water_drop, 'Turbidity', '${turbidity.toStringAsFixed(1)} NTU', '< 5 NTU', _getStatus(turbidity, 0, 5, 5, 10), context),
-            ],
-          ),
-          const SizedBox(height: 24),
-          Text(
-            'Dispenser Levels',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-              fontSize: 18,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: [
-              _dispenserCard('Fish Feed', fishFeed, 10, 'kg', context),
-              _dispenserCard('pH Up', phUp, 5, 'L', context),
-              _dispenserCard('pH Down', phDown, 5, 'L', context),
-            ],
-          ),
-        ],
-      ),
+          );
+        }
+        if (usersSnapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: firestore.collection('support_tickets').snapshots(),
+          builder: (context, ticketsSnapshot) {
+            if (ticketsSnapshot.hasError) {
+              return Center(
+                child: Text(
+                  'Error loading tickets: ${ticketsSnapshot.error}',
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              );
+            }
+            if (ticketsSnapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              stream: firestore.collection('master_sets').snapshots(),
+              builder: (context, setsSnapshot) {
+                if (setsSnapshot.hasError) {
+                  return Center(
+                    child: Text(
+                      'Error loading master sets: ${setsSnapshot.error}',
+                      style: TextStyle(color: Theme.of(context).colorScheme.error),
+                    ),
+                  );
+                }
+                if (setsSnapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                final userDocs = usersSnapshot.data?.docs ?? [];
+                final ticketDocs = ticketsSnapshot.data?.docs ?? [];
+                final setDocs = setsSnapshot.data?.docs ?? [];
+
+                final usersByUserId = <String, Map<String, dynamic>>{};
+                for (final doc in userDocs) {
+                  final data = doc.data();
+                  final userId = _safeString(data['user_id'], fallback: doc.id);
+                  if (userId.isNotEmpty) usersByUserId[userId] = data;
+                }
+
+                final totalUsers = userDocs.length;
+                final activeSystems = userDocs.where((doc) {
+                  final status = _safeString(doc.data()['status']).toLowerCase();
+                  return status == 'active';
+                }).length;
+                final openTickets = ticketDocs.where((doc) {
+                  final status = _safeString(doc.data()['status']).toLowerCase();
+                  return status == 'open';
+                }).length;
+                final totalMasterSets = setDocs.length;
+
+                final latestTickets = [...ticketDocs]
+                  ..sort((a, b) => _readTime(b.data()).compareTo(_readTime(a.data())));
+                final latestThree = latestTickets.take(3).toList();
+
+                final isNarrow = MediaQuery.of(context).size.width < 1050;
+                final topCards = _buildSummaryGrid(
+                  context: context,
+                  totalUsers: totalUsers,
+                  activeSystems: activeSystems,
+                  openTickets: openTickets,
+                  totalMasterSets: totalMasterSets,
+                );
+                final latestTicketsCard = _buildLatestTicketsCard(
+                  context: context,
+                  latestThree: latestThree,
+                  usersByUserId: usersByUserId,
+                );
+
+                if (isNarrow) {
+                  return SingleChildScrollView(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        topCards,
+                        const SizedBox(height: 12),
+                        latestTicketsCard,
+                      ],
+                    ),
+                  );
+                }
+
+                return Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      topCards,
+                      const SizedBox(height: 12),
+                      latestTicketsCard,
+                    ],
+                  ),
+                );
+              },
+            );
+          },
+        );
+      },
     );
   }
 
-  Widget _summaryCard({
-    required IconData icon,
-    required String label,
-    required String value,
-    required String detail,
-    required Color color,
+  Widget _buildSummaryGrid({
     required BuildContext context,
+    required int totalUsers,
+    required int activeSystems,
+    required int openTickets,
+    required int totalMasterSets,
   }) {
-    return Container(
-      width: 280, // Flexible width for Wrap
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withOpacity(0.3)),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4)),
-        ],
+    final cards = [
+      _MetricCardData(
+        title: 'Total Users',
+        value: totalUsers.toString(),
+        subtitle: 'total number of users',
+        icon: Icons.group,
       ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(icon, color: color, size: 28),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: Text(label, style: Theme.of(context).textTheme.labelMedium),
-                ),
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: Text(value, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
-                ),
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: Text(detail, style: Theme.of(context).textTheme.bodySmall),
-                ),
-              ],
-            ),
-          ),
-        ],
+      _MetricCardData(
+        title: 'Active Systems',
+        value: activeSystems.toString(),
+        subtitle: "users with status 'Active'",
+        icon: Icons.grid_view,
       ),
+      _MetricCardData(
+        title: 'Open Tickets',
+        value: openTickets.toString(),
+        subtitle: "tickets with status 'Open'",
+        icon: Icons.support_agent,
+      ),
+      _MetricCardData(
+        title: 'System Sets',
+        value: totalMasterSets.toString(),
+        subtitle: 'total number of available setups',
+        icon: Icons.layers,
+      ),
+    ];
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final crossAxisCount = width >= 1300
+            ? 4
+            : width >= 900
+                ? 2
+                : 1;
+        return GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: cards.length,
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: crossAxisCount,
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
+            mainAxisExtent: 128,
+          ),
+          itemBuilder: (context, index) => _metricCard(context, cards[index]),
+        );
+      },
     );
   }
 
-  Widget _statCard(IconData icon, String label, String value, String range, String status, BuildContext context) {
-    Color color = status == 'safe'
-        ? AquaponicsColors.statusSafe
-        : (status == 'warning' ? AquaponicsColors.statusWarning : AquaponicsColors.statusDanger);
-    return Container(
-      width: 160,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
+  Widget _metricCard(BuildContext context, _MetricCardData card) {
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AquaponicsColors.subtleBorder),
+        side: const BorderSide(color: _teal, width: 1),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Icon(icon, color: color),
-              Container(
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-              )
-            ],
-          ),
-          const SizedBox(height: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(value, style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(9),
+              decoration: BoxDecoration(
+                color: _teal.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
               ),
-              FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(label, style: Theme.of(context).textTheme.bodyMedium),
+              child: Icon(card.icon, color: _teal),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    card.title,
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                          color: const Color(0xFF455A64),
+                        ),
+                  ),
+                  Text(
+                    card.value,
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                  ),
+                  Text(
+                    card.subtitle,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
               ),
-              const SizedBox(height: 4),
-              FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(range, style: Theme.of(context).textTheme.bodySmall?.copyWith(fontSize: 10)),
-              ),
-            ],
-          )
-        ],
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _dispenserCard(String title, double level, double capacity, String unit, BuildContext context) {
-    Color color = level > 50 ? AquaponicsColors.statusSafe : (level > 20 ? AquaponicsColors.statusWarning : AquaponicsColors.statusDanger);
-    return Container(
-      width: 200,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
+  Widget _buildLatestTicketsCard({
+    required BuildContext context,
+    required List<QueryDocumentSnapshot<Map<String, dynamic>>> latestThree,
+    required Map<String, Map<String, dynamic>> usersByUserId,
+  }) {
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AquaponicsColors.subtleBorder),
+        side: const BorderSide(color: _teal, width: 1),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          LinearProgressIndicator(
-            value: level / 100,
-            backgroundColor: AquaponicsColors.subtleBorder,
-            color: color,
-            minHeight: 8,
-            borderRadius: BorderRadius.circular(4),
-          ),
-          const SizedBox(height: 8),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Text('${level.toStringAsFixed(0)}% Remaining', style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12)),
-          ),
-        ],
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Latest Tickets',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: _teal,
+                  ),
+            ),
+            const SizedBox(height: 8),
+            if (latestThree.isEmpty)
+              const Text('No recent tickets available.')
+            else
+              ...latestThree.map((doc) {
+                final data = doc.data();
+                final userId = _safeString(data['user_id'], fallback: '');
+                final userData = usersByUserId[userId];
+                final reportedBy = userData == null
+                    ? _safeString(data['reported_by'], fallback: '-')
+                    : _fullName(userData);
+                return ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.confirmation_number, color: _teal),
+                  title: Text('Ticket ID: ${_safeString(data['ticket_id'], fallback: '-')}'),
+                  subtitle: Text('Reported By: $reportedBy'),
+                  trailing: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: _teal.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Text(
+                      _safeString(data['priority'], fallback: '-'),
+                      style: const TextStyle(
+                        color: _teal,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                );
+              }),
+          ],
+        ),
       ),
     );
   }
+}
 
-  String _getStatus(double value, double min, double max, double wMin, double wMax) {
-    if (value >= min && value <= max) return 'safe';
-    if (value >= wMin && value <= wMax) return 'warning';
-    return 'danger';
-  }
+class _MetricCardData {
+  const _MetricCardData({
+    required this.title,
+    required this.value,
+    required this.subtitle,
+    required this.icon,
+  });
+
+  final String title;
+  final String value;
+  final String subtitle;
+  final IconData icon;
 }

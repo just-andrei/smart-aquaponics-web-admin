@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'aquaponics_colors.dart';
 import 'navigation_provider.dart';
 import 'dashboard_view.dart';
 import 'user_management_view.dart';
+import 'employee_management_view.dart';
 import 'support_tickets_view.dart';
 import 'master_sets_view.dart';
+import 'user_account_service.dart';
 
 
 class AdminDashboard extends StatefulWidget {
@@ -23,204 +26,433 @@ class AdminDashboard extends StatefulWidget {
 
 class _AdminDashboardState extends State<AdminDashboard> {
   final NavigationProvider _navigationProvider = NavigationProvider();
+  late Future<_SessionAccess> _accessFuture;
+  bool _isSidebarCollapsed = false;
 
-  final List<String> _titles = [
-    'System Overview',
-    'User Management',
-    'Master Sets',
-    'Support Tickets',
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _accessFuture = _resolveAccess();
+  }
+
+  Future<_SessionAccess> _resolveAccess() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return const _SessionAccess(role: 'unknown', status: 'inactive');
+    }
+
+    final profile = await UserAccountService.getUserProfileByUidOrEmail(
+      uid: user.uid,
+      email: user.email ?? '',
+    );
+
+    final role = UserAccountService.normalizeRole(
+      (profile?['role'] ?? '').toString(),
+    );
+    final status = (profile?['status'] ?? 'active').toString().toLowerCase();
+    return _SessionAccess(
+      role: role,
+      status: status,
+    );
+  }
 
   // Map to switch views based on selection
-  Widget _getView(int index) {
+  Widget _getView(int index, String role) {
+    final isAdmin = UserAccountService.isAdminRole(role);
     switch (index) {
       case 0: return const DashboardOverview();
-      case 1: return const UserManagementView();
-      case 2: return const MasterSetsView();
-      case 3: return const SupportTicketsView();
+      case 1: return UserManagementView(currentUserRole: role);
+      case 2:
+        if (isAdmin) return const EmployeeManagementView();
+        return const MasterSetsView();
+      case 3:
+        if (isAdmin) return const MasterSetsView();
+        return const SupportTicketsView();
+      case 4: return const SupportTicketsView();
       default: return const DashboardOverview();
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: _navigationProvider,
-      builder: (context, child) {
-      return LayoutBuilder(builder: (context, constraints) {
-      final selectedIndex = _navigationProvider.selectedIndex < _titles.length
-          ? _navigationProvider.selectedIndex
-          : 0;
-      final width = constraints.maxWidth;
-      final isMobile = width < 600;
-      final isTablet = width >= 600 && width < 1100;
-      final isDesktop = width >= 1100;
+    return FutureBuilder<_SessionAccess>(
+      future: _accessFuture,
+      builder: (context, accessSnapshot) {
+        if (accessSnapshot.connectionState != ConnectionState.done) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
 
-      return Scaffold(
-        appBar: AppBar(
-          elevation: 0,
-          automaticallyImplyLeading: isMobile,
-          title: Text(
-            _titles[selectedIndex],
-            style: const TextStyle(
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.notifications_outlined),
-              onPressed: () {},
-            ),
-            const CircleAvatar(
-              backgroundColor: AquaponicsColors.primaryAccent,
-              child: Icon(Icons.person, color: Colors.white),
-            ),
-            const SizedBox(width: 16),
-          ],
-        ),
-        drawer: isMobile
-            ? Drawer(
-                child: _buildNavigationContent(),
-              )
-            : null,
-        body: Row(
-          children: [
-            if (isTablet)
-              NavigationRail(
-                selectedIndex: selectedIndex,
-                onDestinationSelected: (int index) {
-                  _navigationProvider.setIndex(index);
-                },
-                labelType: NavigationRailLabelType.none,
-                destinations: const [
-                  NavigationRailDestination(icon: Icon(Icons.dashboard), label: Text('Overview')),
-                  NavigationRailDestination(icon: Icon(Icons.people), label: Text('Users')),
-                  NavigationRailDestination(icon: Icon(Icons.layers), label: Text('Sets')),
-                  NavigationRailDestination(icon: Icon(Icons.support_agent), label: Text('Support')),
-                ],
-              ),
-            if (isDesktop)
-              Container(
-                width: 250,
-                color: Theme.of(context).cardColor,
-                child: _buildNavigationContent(),
-              ),
-            Expanded(
-              child: _getView(selectedIndex),
-            ),
-          ],
-        ),
-      );
-    });
-      }
+        if (accessSnapshot.hasError) {
+          return Scaffold(
+            body: Center(child: Text('Failed to load user access: ${accessSnapshot.error}')),
+          );
+        }
+
+        final access = accessSnapshot.data ?? const _SessionAccess(role: 'unknown', status: 'inactive');
+        final role = access.role;
+        final status = access.status;
+
+        if (UserAccountService.isGrowerRole(role)) {
+          return _AccessDeniedView(
+            message: 'Grower accounts cannot access the web admin dashboard.',
+          );
+        }
+
+        if (status == 'inactive') {
+          return _AccessDeniedView(
+            message: 'Your account is inactive. Contact an admin.',
+          );
+        }
+
+        final isAdmin = UserAccountService.isAdminRole(role);
+        final titles = <String>[
+          'System Overview',
+          'Grower Management',
+          if (isAdmin) 'Employee Management',
+          'System Sets',
+          'Support Tickets',
+        ];
+
+        return ListenableBuilder(
+          listenable: _navigationProvider,
+          builder: (context, child) {
+            return LayoutBuilder(builder: (context, constraints) {
+              final selectedIndex = _navigationProvider.selectedIndex < titles.length
+                  ? _navigationProvider.selectedIndex
+                  : 0;
+              final width = constraints.maxWidth;
+              final isMobile = width < 600;
+              final isTablet = width >= 600 && width < 1100;
+              final isDesktop = width >= 1100;
+              final showSidebar = isTablet || isDesktop;
+              final collapsedSidebar = isTablet ? true : _isSidebarCollapsed;
+              final isDark = Theme.of(context).brightness == Brightness.dark;
+              final sidebarBackground = isDark ? const Color(0xFF0C1018) : const Color(0xFFF7F9FC);
+              final contentTopPadding = isMobile ? 64.0 : 20.0;
+
+              return Scaffold(
+                drawer: isMobile
+                    ? Drawer(
+                        child: _buildSidebar(
+                          isAdmin,
+                          collapsed: false,
+                          showToggle: false,
+                          isDrawer: true,
+                          isDark: isDark,
+                        ),
+                      )
+                    : null,
+                body: Row(
+                  children: [
+                    if (showSidebar)
+                      Container(
+                        width: collapsedSidebar ? 76 : 248,
+                        color: sidebarBackground,
+                        child: _buildSidebar(
+                          isAdmin,
+                          collapsed: collapsedSidebar,
+                          showToggle: isDesktop,
+                          isDark: isDark,
+                        ),
+                      ),
+                    Expanded(
+                      child: Stack(
+                        children: [
+                          Padding(
+                            padding: EdgeInsets.only(top: contentTopPadding),
+                            child: _getView(selectedIndex, role),
+                          ),
+                          if (isMobile)
+                            Positioned(
+                              top: 12,
+                              left: 12,
+                              child: Builder(
+                                builder: (context) => Material(
+                                  color: Theme.of(context).cardColor,
+                                  elevation: 2,
+                                  shape: const CircleBorder(),
+                                  child: IconButton(
+                                    icon: const Icon(Icons.menu),
+                                    onPressed: () => Scaffold.of(context).openDrawer(),
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            });
+          },
+        );
+      },
     );
   }
 
-  Widget _buildNavigationContent() {
+  Widget _buildSidebar(
+    bool isAdmin, {
+    required bool collapsed,
+    required bool showToggle,
+    required bool isDark,
+    bool isDrawer = false,
+  }) {
+    final setsIndex = isAdmin ? 3 : 2;
+    final supportIndex = isAdmin ? 4 : 3;
+    final navItems = <_NavItem>[
+      const _NavItem(index: 0, icon: Icons.home_rounded, label: 'Dashboard'),
+      const _NavItem(index: 1, icon: Icons.people_alt_rounded, label: 'Growers'),
+      if (isAdmin)
+        const _NavItem(index: 2, icon: Icons.badge_rounded, label: 'Employees'),
+      _NavItem(index: setsIndex, icon: Icons.layers_rounded, label: 'System Sets'),
+      _NavItem(index: supportIndex, icon: Icons.support_agent_rounded, label: 'Support Tickets'),
+    ];
+
+    final dividerColor = isDark ? const Color(0xFF1A2130) : const Color(0xFFE3E7EE);
+    final brandTextColor = isDark ? Colors.white : const Color(0xFF111827);
+    final accentColor = AquaponicsColors.primaryAccent;
+
     return Column(
       children: [
+        Container(
+          height: 74,
+          padding: EdgeInsets.symmetric(horizontal: collapsed ? 0 : 16),
+          alignment: collapsed ? Alignment.center : Alignment.centerLeft,
+          decoration: BoxDecoration(
+            border: Border(
+              bottom: BorderSide(color: dividerColor),
+            ),
+          ),
+          child: collapsed
+              ? Icon(Icons.water_drop, color: accentColor, size: 24)
+              : Row(
+                  children: [
+                    Icon(Icons.water_drop, color: accentColor, size: 24),
+                    const SizedBox(width: 10),
+                    Text(
+                      'Smart Aquaponics',
+                      style: TextStyle(
+                        color: brandTextColor,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+        ),
         Expanded(
-          child: SingleChildScrollView(
-            child: Column(
+          child: ListView(
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+            children: navItems
+                .map((item) => _buildNavItem(
+                      item: item,
+                      collapsed: collapsed,
+                      isDrawer: isDrawer,
+                      isDark: isDark,
+                    ))
+                .toList(),
+          ),
+        ),
+        Divider(color: dividerColor, height: 1),
+        _buildBottomAction(
+          icon: widget.themeMode == ThemeMode.dark ? Icons.dark_mode : Icons.light_mode,
+          label: 'Theme',
+          collapsed: collapsed,
+          isDark: isDark,
+          onTap: () {
+            widget.onThemeChanged(
+              widget.themeMode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark,
+            );
+          },
+        ),
+        _buildBottomAction(
+          icon: Icons.logout,
+          label: 'Logout',
+          color: AquaponicsColors.statusDanger,
+          collapsed: collapsed,
+          isDark: isDark,
+          onTap: () async {
+            try {
+              await FirebaseAuth.instance.signOut();
+            } on FirebaseAuthException catch (e) {
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(e.message ?? 'Logout failed')),
+              );
+            }
+          },
+        ),
+        if (showToggle)
+          _buildBottomAction(
+            icon: collapsed ? Icons.keyboard_double_arrow_right : Icons.keyboard_double_arrow_left,
+            label: collapsed ? 'Expand' : 'Collapse',
+            collapsed: collapsed,
+            isDark: isDark,
+            onTap: () {
+              setState(() => _isSidebarCollapsed = !_isSidebarCollapsed);
+            },
+          ),
+        const SizedBox(height: 8),
+      ],
+    );
+  }
+
+  Widget _buildNavItem({
+    required _NavItem item,
+    required bool collapsed,
+    required bool isDrawer,
+    required bool isDark,
+  }) {
+    final selected = _navigationProvider.selectedIndex == item.index;
+    final defaultIconColor = isDark ? const Color(0xFFA4ACB9) : const Color(0xFF4B5563);
+    final defaultTextColor = isDark ? const Color(0xFFD0D5DF) : const Color(0xFF111827);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Tooltip(
+        message: collapsed ? item.label : '',
+        child: Material(
+          color: selected ? const Color(0xFF1F64D8) : Colors.transparent,
+          borderRadius: BorderRadius.circular(14),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: () {
+              _navigationProvider.setIndex(item.index);
+              if (isDrawer) Navigator.of(context).pop();
+            },
+            child: SizedBox(
+              height: 44,
+              child: Row(
+                mainAxisAlignment:
+                    collapsed ? MainAxisAlignment.center : MainAxisAlignment.start,
+                children: [
+                  const SizedBox(width: 12),
+                  Icon(
+                    item.icon,
+                    size: 20,
+                    color: selected ? Colors.white : defaultIconColor,
+                  ),
+                  if (!collapsed) ...[
+                    const SizedBox(width: 12),
+                    Text(
+                      item.label,
+                      style: TextStyle(
+                        color: selected ? Colors.white : defaultTextColor,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBottomAction({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+    required bool collapsed,
+    required bool isDark,
+    Color color = const Color(0xFFA4ACB9),
+  }) {
+    final resolvedColor = color == const Color(0xFFA4ACB9)
+        ? (isDark ? const Color(0xFFA4ACB9) : const Color(0xFF4B5563))
+        : color;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 6, 8, 0),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: onTap,
+          child: SizedBox(
+            height: 42,
+            child: Row(
+              mainAxisAlignment:
+                  collapsed ? MainAxisAlignment.center : MainAxisAlignment.start,
               children: [
-                DrawerHeader(
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        AquaponicsColors.primaryAccent,
-                        AquaponicsColors.brandGradientHeader
-                      ],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
+                const SizedBox(width: 12),
+                Icon(icon, size: 18, color: resolvedColor),
+                if (!collapsed) ...[
+                  const SizedBox(width: 12),
+                  Text(
+                    label,
+                    style: TextStyle(color: resolvedColor, fontWeight: FontWeight.w600),
                   ),
-                  child: Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.water_drop, size: 48, color: Colors.white),
-                        const SizedBox(height: 10),
-                        const Text(
-                          'Smart Aquaponics',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        Text(
-                          'Admin Console',
-                          style: TextStyle(
-                            color: Colors.white.withOpacity(0.8),
-                            fontSize: 14,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NavItem {
+  final int index;
+  final IconData icon;
+  final String label;
+
+  const _NavItem({
+    required this.index,
+    required this.icon,
+    required this.label,
+  });
+}
+
+class _SessionAccess {
+  final String role;
+  final String status;
+
+  const _SessionAccess({
+    required this.role,
+    required this.status,
+  });
+}
+
+class _AccessDeniedView extends StatelessWidget {
+  final String message;
+
+  const _AccessDeniedView({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.lock_outline, size: 56),
+                const SizedBox(height: 16),
+                Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.titleMedium,
                 ),
-                ListTile(
-                  leading: const Icon(Icons.dashboard),
-                  title: const Text('Dashboard'),
-                  selected: _navigationProvider.selectedIndex == 0,
-                  selectedColor: AquaponicsColors.primaryAccent,
-                  onTap: () => _navigationProvider.setIndex(0),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.people),
-                  title: const Text('User Management'),
-                  selected: _navigationProvider.selectedIndex == 1,
-                  selectedColor: AquaponicsColors.primaryAccent,
-                  onTap: () => _navigationProvider.setIndex(1),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.layers),
-                  title: const Text('System Sets'),
-                  selected: _navigationProvider.selectedIndex == 2,
-                  selectedColor: AquaponicsColors.primaryAccent,
-                  onTap: () => _navigationProvider.setIndex(2),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.support_agent),
-                  title: const Text('Support Tickets'),
-                  selected: _navigationProvider.selectedIndex == 3,
-                  selectedColor: AquaponicsColors.primaryAccent,
-                  onTap: () => _navigationProvider.setIndex(3),
+                const SizedBox(height: 16),
+                FilledButton(
+                  onPressed: () => FirebaseAuth.instance.signOut(),
+                  child: const Text('Logout'),
                 ),
               ],
             ),
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0),
-          child: Row(
-            children: [
-              Icon(
-                widget.themeMode == ThemeMode.dark ? Icons.dark_mode : Icons.light_mode,
-                color: AquaponicsColors.textSecondary,
-              ),
-              const SizedBox(width: 12),
-              const Text('Dark Mode'),
-              const Spacer(),
-              Switch(
-                value: widget.themeMode == ThemeMode.dark,
-                onChanged: (val) {
-                  widget.onThemeChanged(val ? ThemeMode.dark : ThemeMode.light);
-                },
-              ),
-            ],
-          ),
-        ),
-        const Divider(),
-        ListTile(
-          leading: const Icon(Icons.logout, color: AquaponicsColors.statusDanger),
-          title: const Text('Logout', style: TextStyle(color: AquaponicsColors.statusDanger)),
-          onTap: () {
-            // Handle logout
-          },
-        ),
-        const SizedBox(height: 16),
-      ],
+      ),
     );
   }
 }

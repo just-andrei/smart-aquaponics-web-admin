@@ -11,4 +11,10 @@ class AquaponicsColors {
   static const Color background = Color(0xFFF0F4F8);
   static const Color textPrimary = Color(0xFF1D3557);
   static const Color textSecondary = Color(0xFF457B9D);
+
+  // Added for Sign In Page
+  static const Color primaryBackground = Color(0xFF1D3557);
+  static const Color secondaryBackground = Color(0xFF457B9D);
+  static const Color gradientAccent = Color(0xFF00B4D8);
+  static const Color textMuted = Color(0xFF94A3B8);
 }
