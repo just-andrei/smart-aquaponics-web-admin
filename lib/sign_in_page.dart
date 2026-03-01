@@ -21,8 +21,11 @@ class SignInPage extends StatefulWidget {
 }
 
 class _SignInPageState extends State<SignInPage> {
+  final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _emailFocusNode = FocusNode();
+  final _passwordFocusNode = FocusNode();
   bool _isLoading = false;
   bool _isPasswordVisible = false;
 
@@ -30,7 +33,25 @@ class _SignInPageState extends State<SignInPage> {
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
+    _emailFocusNode.dispose();
+    _passwordFocusNode.dispose();
     super.dispose();
+  }
+
+  void _showSignInError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          message,
+          style: const TextStyle(
+            color: Color(0xFFC62828),
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        backgroundColor: Colors.white,
+      ),
+    );
   }
 
   Future<String> _resolveEmailForUsername(String username) async {
@@ -93,32 +114,11 @@ class _SignInPageState extends State<SignInPage> {
         );
       }
     } on FirebaseAuthException catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(e.message ?? 'Authentication failed'),
-            backgroundColor: AquaponicsColors.statusDanger,
-          ),
-        );
-      }
+      _showSignInError(e.message ?? 'Sign in failed. Please check your credentials and try again.');
     } on FirebaseException catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(e.message ?? 'A Firebase error occurred'),
-            backgroundColor: AquaponicsColors.statusDanger,
-          ),
-        );
-      }
+      _showSignInError(e.message ?? 'A Firebase error occurred during sign in.');
     } on Object catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Sign in failed: $e'),
-            backgroundColor: AquaponicsColors.statusDanger,
-          ),
-        );
-      }
+      _showSignInError('Sign in failed: $e');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -258,62 +258,94 @@ class _SignInPageState extends State<SignInPage> {
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 32),
-                      _buildTextField(
-                        controller: _emailController,
-                        hint: 'Email or Username',
-                        icon: Icons.person_outline,
-                      ),
-                      const SizedBox(height: 20),
-                      _buildTextField(
-                        controller: _passwordController,
-                        hint: 'Password',
-                        icon: Icons.lock_outline,
-                        isPassword: true,
-                      ),
-                      const SizedBox(height: 12),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: TextButton(
-                          onPressed: _sendResetPassword,
-                          child: const Text(
-                            'Forgot Password?',
-                            style: TextStyle(
-                              color: _teal,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
+                      Form(
+                        key: _formKey,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Semantics(
+                              label: 'Email Input Field',
+                              textField: true,
+                              child: _buildTextField(
+                                controller: _emailController,
+                                hint: 'Email or Username',
+                                icon: Icons.person_outline,
+                                focusNode: _emailFocusNode,
+                                textInputAction: TextInputAction.next,
+                                onFieldSubmitted: (_) {
+                                  FocusScope.of(context).requestFocus(_passwordFocusNode);
+                                },
+                              ),
                             ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                      SizedBox(
-                        height: 50,
-                        child: FilledButton(
-                          onPressed: _isLoading ? null : _handleAuth,
-                          style: FilledButton.styleFrom(
-                            backgroundColor: _teal,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                            const SizedBox(height: 20),
+                            Semantics(
+                              label: 'Password Input Field',
+                              textField: true,
+                              child: _buildTextField(
+                                controller: _passwordController,
+                                hint: 'Password',
+                                icon: Icons.lock_outline,
+                                isPassword: true,
+                                focusNode: _passwordFocusNode,
+                                textInputAction: TextInputAction.done,
+                                onFieldSubmitted: (_) {
+                                  if (!_isLoading) {
+                                    _handleAuth();
+                                  }
+                                },
+                              ),
                             ),
-                          ),
-                          child: _isLoading
-                              ? const SizedBox(
-                                  height: 20,
-                                  width: 20,
-                                  child: CircularProgressIndicator(
-                                    color: Colors.white,
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Text(
-                                  'Sign In',
+                            const SizedBox(height: 12),
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: TextButton(
+                                onPressed: _sendResetPassword,
+                                child: const Text(
+                                  'Forgot Password?',
                                   style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w800,
-                                    color: Colors.white,
+                                    color: _teal,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
                                   ),
                                 ),
+                              ),
+                            ),
+                            const SizedBox(height: 24),
+                            Semantics(
+                              label: 'Login Button',
+                              button: true,
+                              child: SizedBox(
+                                height: 50,
+                                child: FilledButton(
+                                  onPressed: _isLoading ? null : _handleAuth,
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: _teal,
+                                    foregroundColor: Colors.white,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
+                                  child: _isLoading
+                                      ? const SizedBox(
+                                          height: 20,
+                                          width: 20,
+                                          child: CircularProgressIndicator(
+                                            color: Colors.white,
+                                            strokeWidth: 2,
+                                          ),
+                                        )
+                                      : const Text(
+                                          'Sign In',
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w800,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
@@ -332,14 +364,20 @@ class _SignInPageState extends State<SignInPage> {
     required TextEditingController controller,
     required String hint,
     required IconData icon,
+    required FocusNode focusNode,
+    required TextInputAction textInputAction,
+    ValueChanged<String>? onFieldSubmitted,
     bool isPassword = false,
   }) {
     return TextFormField(
       controller: controller,
+      focusNode: focusNode,
       obscureText: isPassword ? !_isPasswordVisible : false,
       enableSuggestions: !isPassword,
       autocorrect: !isPassword,
       keyboardType: isPassword ? TextInputType.visiblePassword : TextInputType.emailAddress,
+      textInputAction: textInputAction,
+      onFieldSubmitted: onFieldSubmitted,
       style: const TextStyle(
         color: Color(0xFF1F2937),
         fontSize: 15,

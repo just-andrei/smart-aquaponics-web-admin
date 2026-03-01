@@ -234,7 +234,7 @@ class _SupportTicketsViewState extends State<SupportTicketsView> {
     required String nextTicketId,
   }) {
     return Align(
-      alignment: Alignment.topCenter,
+      alignment: Alignment.topLeft,
       child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
         child: Column(
@@ -351,7 +351,7 @@ class _SupportTicketsViewState extends State<SupportTicketsView> {
         .toList();
 
     return Align(
-      alignment: Alignment.topCenter,
+      alignment: Alignment.topLeft,
       child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
         child: Column(

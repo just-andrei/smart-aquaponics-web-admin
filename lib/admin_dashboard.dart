@@ -131,10 +131,11 @@ class _AdminDashboardState extends State<AdminDashboard> {
               final collapsedSidebar = isTablet ? true : _isSidebarCollapsed;
               final isDark = Theme.of(context).brightness == Brightness.dark;
               final sidebarBackground = isDark ? const Color(0xFF0C1018) : const Color(0xFFF7F9FC);
-              final contentTopPadding = isMobile ? 64.0 : 24.0;
+              const contentTopPadding = 24.0;
+              final sidebarDividerColor = isDark ? const Color(0xFF1A2130) : const Color(0xFFE3E7EE);
 
               return Scaffold(
-                drawer: isMobile
+                endDrawer: isMobile
                     ? Drawer(
                         child: _buildSidebar(
                           isAdmin,
@@ -147,28 +148,17 @@ class _AdminDashboardState extends State<AdminDashboard> {
                     : null,
                 body: Row(
                   children: [
-                    if (showSidebar)
-                      Container(
-                        width: collapsedSidebar ? 76 : 248,
-                        color: sidebarBackground,
-                        child: _buildSidebar(
-                          isAdmin,
-                          collapsed: collapsedSidebar,
-                          showToggle: isDesktop,
-                          isDark: isDark,
-                        ),
-                      ),
                     Expanded(
                       child: Stack(
                         children: [
                           Padding(
-                            padding: EdgeInsets.only(top: contentTopPadding),
+                            padding: const EdgeInsets.only(top: contentTopPadding),
                             child: _getView(selectedIndex, role),
                           ),
                           if (isMobile)
                             Positioned(
                               top: 12,
-                              left: 12,
+                              right: 12,
                               child: Builder(
                                 builder: (context) => Material(
                                   color: Theme.of(context).cardColor,
@@ -176,7 +166,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                                   shape: const CircleBorder(),
                                   child: IconButton(
                                     icon: const Icon(Icons.menu),
-                                    onPressed: () => Scaffold.of(context).openDrawer(),
+                                    onPressed: () => Scaffold.of(context).openEndDrawer(),
                                   ),
                                 ),
                               ),
@@ -184,6 +174,22 @@ class _AdminDashboardState extends State<AdminDashboard> {
                         ],
                       ),
                     ),
+                    if (showSidebar)
+                      Container(
+                        width: collapsedSidebar ? 76 : 248,
+                        decoration: BoxDecoration(
+                          color: sidebarBackground,
+                          border: Border(
+                            left: BorderSide(color: sidebarDividerColor),
+                          ),
+                        ),
+                        child: _buildSidebar(
+                          isAdmin,
+                          collapsed: collapsedSidebar,
+                          showToggle: isDesktop,
+                          isDark: isDark,
+                        ),
+                      ),
                   ],
                 ),
               );
