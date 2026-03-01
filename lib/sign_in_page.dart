@@ -250,7 +250,7 @@ class _SignInPageState extends State<SignInPage> {
                       ),
                       const SizedBox(height: 8),
                       const Text(
-                        'Sign in to monitor your system',
+                        'Sign in',
                         style: TextStyle(
                           color: AquaponicsColors.textSecondary,
                           fontSize: 14,
