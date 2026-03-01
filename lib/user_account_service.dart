@@ -16,13 +16,32 @@ class CreatedUserResult {
   });
 }
 
+class UserProfileRecord {
+  final String collection;
+  final String uid;
+  final Map<String, dynamic> data;
+
+  const UserProfileRecord({
+    required this.collection,
+    required this.uid,
+    required this.data,
+  });
+}
+
 class UserAccountService {
   UserAccountService._();
+
+  static const List<String> roleCollectionsInPriority = [
+    'admin',
+    'employee',
+    'user',
+  ];
 
   static String normalizeRole(String role) {
     final normalized = role.trim().toLowerCase();
     if (normalized == 'manager') return 'admin';
     if (normalized == 'system support') return 'employee';
+    if (normalized == 'user') return 'grower';
     return normalized;
   }
 
@@ -31,6 +50,13 @@ class UserAccountService {
   static bool isEmployeeRole(String role) => normalizeRole(role) == 'employee';
 
   static bool isGrowerRole(String role) => normalizeRole(role) == 'grower';
+
+  static String collectionForRole(String role) {
+    final normalizedRole = normalizeRole(role);
+    if (normalizedRole == 'admin') return 'admin';
+    if (normalizedRole == 'employee') return 'employee';
+    return 'user';
+  }
 
   static String generateSecurePassword({int length = 18}) {
     const lower = 'abcdefghijklmnopqrstuvwxyz';
@@ -81,8 +107,9 @@ class UserAccountService {
         password: temporaryPassword,
       );
       final uid = credential.user!.uid;
+      final collection = collectionForRole(normalizedRole);
 
-      await FirebaseFirestore.instance.collection('user').doc(uid).set({
+      await FirebaseFirestore.instance.collection(collection).doc(uid).set({
         'user_id': uid,
         'first_name': firstName.trim(),
         'last_name': lastName.trim(),
@@ -104,21 +131,106 @@ class UserAccountService {
     }
   }
 
+  static Future<UserProfileRecord?> getProfileByUid(String uid) async {
+    for (final collection in roleCollectionsInPriority) {
+      final doc = await FirebaseFirestore.instance.collection(collection).doc(uid).get();
+      if (doc.exists && doc.data() != null) {
+        return UserProfileRecord(
+          collection: collection,
+          uid: uid,
+          data: doc.data()!,
+        );
+      }
+    }
+    return null;
+  }
+
+  static Future<UserProfileRecord?> getProfileByUidOrEmail({
+    required String uid,
+    required String email,
+  }) async {
+    final byUid = await getProfileByUid(uid);
+    if (byUid != null) return byUid;
+
+    final normalizedEmail = email.trim().toLowerCase();
+    if (normalizedEmail.isEmpty) return null;
+
+    for (final collection in roleCollectionsInPriority) {
+      final byEmail = await FirebaseFirestore.instance
+          .collection(collection)
+          .where('email', isEqualTo: normalizedEmail)
+          .limit(1)
+          .get();
+      if (byEmail.docs.isNotEmpty) {
+        final doc = byEmail.docs.first;
+        return UserProfileRecord(
+          collection: collection,
+          uid: doc.id,
+          data: doc.data(),
+        );
+      }
+    }
+    return null;
+  }
+
   static Future<Map<String, dynamic>?> getUserProfileByUidOrEmail({
     required String uid,
     required String email,
   }) async {
-    final byUid = await FirebaseFirestore.instance.collection('user').doc(uid).get();
-    if (byUid.exists) return byUid.data();
+    final profile = await getProfileByUidOrEmail(uid: uid, email: email);
+    return profile?.data;
+  }
 
-    final normalizedEmail = email.trim().toLowerCase();
-    if (normalizedEmail.isEmpty) return null;
-    final byEmail = await FirebaseFirestore.instance
-        .collection('user')
-        .where('email', isEqualTo: normalizedEmail)
-        .limit(1)
-        .get();
-    if (byEmail.docs.isEmpty) return null;
-    return byEmail.docs.first.data();
+  static Future<String?> resolveEmailForIdentifier(String identifier) async {
+    final normalized = identifier.trim().toLowerCase();
+    if (normalized.isEmpty) return null;
+
+    for (final collection in roleCollectionsInPriority) {
+      // 1) Direct UID/doc-id lookup.
+      final byUid = await FirebaseFirestore.instance.collection(collection).doc(normalized).get();
+      if (byUid.exists && byUid.data() != null) {
+        final email = (byUid.data()!['email'] ?? '').toString().trim().toLowerCase();
+        if (email.isNotEmpty) return email;
+      }
+
+      // 2) Username lookup.
+      final byUsername = await FirebaseFirestore.instance
+          .collection(collection)
+          .where('username', isEqualTo: normalized)
+          .limit(1)
+          .get();
+      if (byUsername.docs.isNotEmpty) {
+        final email = (byUsername.docs.first.data()['email'] ?? '').toString().trim().toLowerCase();
+        if (email.isNotEmpty) return email;
+      }
+
+      // 3) Numeric/logical user_id lookup.
+      final byUserId = await FirebaseFirestore.instance
+          .collection(collection)
+          .where('user_id', isEqualTo: normalized)
+          .limit(1)
+          .get();
+      if (byUserId.docs.isNotEmpty) {
+        final email = (byUserId.docs.first.data()['email'] ?? '').toString().trim().toLowerCase();
+        if (email.isNotEmpty) return email;
+      }
+
+      // 4) Email lookup fallback (if input is already an email).
+      final byEmail = await FirebaseFirestore.instance
+          .collection(collection)
+          .where('email', isEqualTo: normalized)
+          .limit(1)
+          .get();
+      if (byEmail.docs.isNotEmpty) {
+        final email = (byEmail.docs.first.data()['email'] ?? '').toString().trim().toLowerCase();
+        if (email.isNotEmpty) return email;
+      }
+    }
+    return null;
+  }
+
+  static Future<String?> resolveEmailForUsername(String username) {
+    // Backward-compatible alias.
+    return resolveEmailForIdentifier(username);
   }
 }

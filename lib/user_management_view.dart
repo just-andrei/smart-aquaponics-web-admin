@@ -40,7 +40,9 @@ class _UserManagementViewState extends State<UserManagementView> {
   }
 
   bool _canViewRole(String role) {
-    return UserAccountService.isGrowerRole(role);
+    final normalized = UserAccountService.normalizeRole(role);
+    if (normalized.isEmpty) return true;
+    return UserAccountService.isGrowerRole(normalized);
   }
 
   bool _matchesSearch(QueryDocumentSnapshot<Map<String, dynamic>> doc, String query) {

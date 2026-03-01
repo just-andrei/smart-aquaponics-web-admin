@@ -3,6 +3,8 @@ import 'dart:math' as math;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+const _teal = Color(0xFF0097A7);
+
 String _firebaseErrorMessage(Object error) {
   if (error is FirebaseException) {
     return error.message ?? error.code;
@@ -11,7 +13,9 @@ String _firebaseErrorMessage(Object error) {
 }
 
 class MasterSetsView extends StatefulWidget {
-  const MasterSetsView({super.key});
+  const MasterSetsView({super.key, required this.userRole});
+
+  final String userRole;
 
   @override
   State<MasterSetsView> createState() => _MasterSetsViewState();
@@ -21,6 +25,7 @@ class _MasterSetsViewState extends State<MasterSetsView> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final TextEditingController _searchCtrl = TextEditingController();
   String? _selectedDocId;
+  bool get _canManageMasterSets => widget.userRole.trim().toLowerCase() == 'admin';
 
   double _toDouble(dynamic value) {
     if (value is num) return value.toDouble();
@@ -164,32 +169,44 @@ class _MasterSetsViewState extends State<MasterSetsView> {
                             spacing: 8,
                             runSpacing: 8,
                             children: [
-                              OutlinedButton(
-                                onPressed: () => _showSetDialog(null),
-                                child: const Text('Create'),
-                              ),
-                              OutlinedButton(
-                                onPressed: selectedDoc == null
-                                    ? null
-                                    : () => _editSet(selectedDoc!),
-                                child: const Text('Update'),
-                              ),
-                              FilledButton(
-                                onPressed: selectedDoc == null
-                                    ? null
-                                    : () {
-                                        final data =
-                                            selectedDoc!.data() as Map<String, dynamic>;
-                                        final name =
-                                            (data['set_name'] ?? 'Unnamed Set')
-                                                .toString();
-                                        _deleteSet(selectedDoc.id, name);
-                                      },
-                                style: FilledButton.styleFrom(
-                                  backgroundColor: Theme.of(context).colorScheme.error,
+                              if (_canManageMasterSets)
+                                OutlinedButton(
+                                  onPressed: () => _showSetDialog(null),
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: _teal,
+                                    side: const BorderSide(color: _teal),
+                                  ),
+                                  child: const Text('Create'),
                                 ),
-                                child: const Text('Delete'),
-                              ),
+                              if (_canManageMasterSets)
+                                OutlinedButton(
+                                  onPressed: selectedDoc == null
+                                      ? null
+                                      : () => _editSet(selectedDoc!),
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: _teal,
+                                    side: const BorderSide(color: _teal),
+                                  ),
+                                  child: const Text('Update'),
+                                ),
+                              if (_canManageMasterSets)
+                                FilledButton(
+                                  onPressed: selectedDoc == null
+                                      ? null
+                                      : () {
+                                          final data =
+                                              selectedDoc!.data() as Map<String, dynamic>;
+                                          final name =
+                                              (data['set_name'] ?? 'Unnamed Set')
+                                                  .toString();
+                                          _deleteSet(selectedDoc.id, name);
+                                        },
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: _teal,
+                                    foregroundColor: Colors.white,
+                                  ),
+                                  child: const Text('Delete'),
+                                ),
                             ],
                           );
                         },
@@ -202,12 +219,18 @@ class _MasterSetsViewState extends State<MasterSetsView> {
                         controller: _searchCtrl,
                         decoration: InputDecoration(
                           labelText: 'Search by Set Name',
-                          prefixIcon: const Icon(Icons.search),
+                          prefixIcon: const Icon(Icons.search, color: _teal),
                           suffixIcon: IconButton(
                             icon: const Icon(Icons.clear),
                             onPressed: () => _searchCtrl.clear(),
                           ),
                           border: const OutlineInputBorder(),
+                          enabledBorder: const OutlineInputBorder(
+                            borderSide: BorderSide(color: _teal),
+                          ),
+                          focusedBorder: const OutlineInputBorder(
+                            borderSide: BorderSide(color: _teal, width: 2),
+                          ),
                         ),
                       ),
                     ),
@@ -226,6 +249,7 @@ class _MasterSetsViewState extends State<MasterSetsView> {
                         final source = _MasterSetsDataSource(
                           filteredData,
                           selectedDocId: _selectedDocId,
+                          enableSelection: _canManageMasterSets,
                           onSelect: (id) {
                             setState(() {
                               _selectedDocId = id;
@@ -275,6 +299,7 @@ class _MasterSetsViewState extends State<MasterSetsView> {
                                   IconButton(
                                     icon: const Icon(Icons.refresh),
                                     onPressed: _extractExistingMasterSets,
+                                    color: _teal,
                                   ),
                                 ],
                               ),
@@ -294,6 +319,7 @@ class _MasterSetsViewState extends State<MasterSetsView> {
   }
 
   void _showSetDialog(DocumentSnapshot? document) {
+    if (!_canManageMasterSets) return;
     showDialog(
       context: context,
       builder: (context) => _MasterSetDialog(document: document),
@@ -305,6 +331,7 @@ class _MasterSetsViewState extends State<MasterSetsView> {
   }
 
   void _deleteSet(String id, String name) {
+    if (!_canManageMasterSets) return;
     final rootContext = context;
     showDialog(
       context: rootContext,
@@ -350,11 +377,13 @@ class _MasterSetsViewState extends State<MasterSetsView> {
 class _MasterSetsDataSource extends DataTableSource {
   final List<QueryDocumentSnapshot> _data;
   final String? selectedDocId;
+  final bool enableSelection;
   final ValueChanged<String?> onSelect;
 
   _MasterSetsDataSource(
     this._data, {
     required this.selectedDocId,
+    required this.enableSelection,
     required this.onSelect,
   });
 
@@ -378,9 +407,11 @@ class _MasterSetsDataSource extends DataTableSource {
     final minTurbidity = data['min_turbidity'] ?? 0;
     final maxTurbidity = data['max_turbidity'] ?? 0;
 
-    return DataRow.byIndex(index: index, selected: doc.id == selectedDocId, onSelectChanged: (selected) {
-      onSelect(selected == true ? doc.id : null);
-    }, cells: [
+    return DataRow.byIndex(index: index, selected: doc.id == selectedDocId, onSelectChanged: enableSelection
+        ? (selected) {
+            onSelect(selected == true ? doc.id : null);
+          }
+        : null, cells: [
       DataCell(Text(name.toString(), style: const TextStyle(fontWeight: FontWeight.bold))),
       DataCell(Text('$minTemp - $maxTemp')),
       DataCell(Text('$minPh - $maxPh')),

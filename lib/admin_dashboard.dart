@@ -41,13 +41,14 @@ class _AdminDashboardState extends State<AdminDashboard> {
       return const _SessionAccess(role: 'unknown', status: 'inactive');
     }
 
-    final profile = await UserAccountService.getUserProfileByUidOrEmail(
-      uid: user.uid,
-      email: user.email ?? '',
-    );
+    final profileRecord = await UserAccountService.getProfileByUid(user.uid);
+    final profile = profileRecord?.data;
+    final fallbackRole = profileRecord == null
+        ? ''
+        : (profileRecord.collection == 'user' ? 'grower' : profileRecord.collection);
 
     final role = UserAccountService.normalizeRole(
-      (profile?['role'] ?? '').toString(),
+      (profile?['role'] ?? fallbackRole).toString(),
     );
     final status = (profile?['status'] ?? 'active').toString().toLowerCase();
     return _SessionAccess(
@@ -64,9 +65,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
       case 1: return UserManagementView(currentUserRole: role);
       case 2:
         if (isAdmin) return const EmployeeManagementView();
-        return const MasterSetsView();
+        return MasterSetsView(userRole: role);
       case 3:
-        if (isAdmin) return const MasterSetsView();
+        if (isAdmin) return MasterSetsView(userRole: role);
         return const SupportTicketsView();
       case 4: return const SupportTicketsView();
       default: return const DashboardOverview();
@@ -130,7 +131,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
               final collapsedSidebar = isTablet ? true : _isSidebarCollapsed;
               final isDark = Theme.of(context).brightness == Brightness.dark;
               final sidebarBackground = isDark ? const Color(0xFF0C1018) : const Color(0xFFF7F9FC);
-              final contentTopPadding = isMobile ? 64.0 : 20.0;
+              final contentTopPadding = isMobile ? 64.0 : 24.0;
 
               return Scaffold(
                 drawer: isMobile

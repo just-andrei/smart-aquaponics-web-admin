@@ -1,9 +1,10 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import 'aquaponics_colors.dart';
 import 'user_account_service.dart';
+
+const _teal = Color(0xFF0097A7);
 
 class SignInPage extends StatefulWidget {
   final ValueChanged<ThemeMode> onThemeModeChanged;
@@ -33,17 +34,11 @@ class _SignInPageState extends State<SignInPage> {
   }
 
   Future<String> _resolveEmailForUsername(String username) async {
-    final byUsername = await FirebaseFirestore.instance
-        .collection('user')
-        .where('username', isEqualTo: username.trim())
-        .limit(1)
-        .get();
-    if (byUsername.docs.isNotEmpty) {
-      return (byUsername.docs.first.data()['email'] ?? '').toString().toLowerCase();
-    }
+    final resolved = await UserAccountService.resolveEmailForIdentifier(username);
+    if (resolved != null && resolved.isNotEmpty) return resolved;
     throw FirebaseAuthException(
       code: 'user-not-found',
-      message: 'No user found for that username.',
+      message: 'No account found for that email/username/user ID.',
     );
   }
 
@@ -69,10 +64,8 @@ class _SignInPageState extends State<SignInPage> {
         );
       }
 
-      final profile = await UserAccountService.getUserProfileByUidOrEmail(
-        uid: signedInUser.uid,
-        email: signedInUser.email ?? email,
-      );
+      final profileRecord = await UserAccountService.getProfileByUid(signedInUser.uid);
+      final profile = profileRecord?.data;
       if (profile == null) {
         await FirebaseAuth.instance.signOut();
         throw FirebaseAuthException(
@@ -156,6 +149,22 @@ class _SignInPageState extends State<SignInPage> {
           backgroundColor: AquaponicsColors.statusDanger,
         ),
       );
+    } on FirebaseException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.message ?? 'A Firebase error occurred while sending reset email'),
+          backgroundColor: AquaponicsColors.statusDanger,
+        ),
+      );
+    } on Object catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to send reset email: $e'),
+          backgroundColor: AquaponicsColors.statusDanger,
+        ),
+      );
     }
   }
 
@@ -184,27 +193,6 @@ class _SignInPageState extends State<SignInPage> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: AquaponicsColors.glassPanel,
-                    border: Border.all(color: AquaponicsColors.subtleBorder),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.2),
-                        blurRadius: 20,
-                        offset: const Offset(0, 10),
-                      ),
-                    ],
-                  ),
-                  child: const Icon(
-                    Icons.water_drop,
-                    size: 60,
-                    color: AquaponicsColors.primaryAccent,
-                  ),
-                ),
-                const SizedBox(height: 40),
-                Container(
                   width: isMobile ? double.infinity : 400,
                   padding: const EdgeInsets.all(32),
                   decoration: BoxDecoration(
@@ -222,6 +210,29 @@ class _SignInPageState extends State<SignInPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      Center(
+                        child: Container(
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white,
+                            border: Border.all(color: _teal, width: 2),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.12),
+                                blurRadius: 16,
+                                offset: const Offset(0, 8),
+                              ),
+                            ],
+                          ),
+                          child: const Icon(
+                            Icons.water_drop,
+                            size: 60,
+                            color: _teal,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 24),
                       Text(
                         'Welcome Back',
                         style: TextStyle(
@@ -249,13 +260,13 @@ class _SignInPageState extends State<SignInPage> {
                       const SizedBox(height: 32),
                       _buildTextField(
                         controller: _emailController,
-                        label: 'Email or Username',
+                        hint: 'Email or Username',
                         icon: Icons.person_outline,
                       ),
                       const SizedBox(height: 20),
                       _buildTextField(
                         controller: _passwordController,
-                        label: 'Password',
+                        hint: 'Password',
                         icon: Icons.lock_outline,
                         isPassword: true,
                       ),
@@ -267,36 +278,21 @@ class _SignInPageState extends State<SignInPage> {
                           child: const Text(
                             'Forgot Password?',
                             style: TextStyle(
-                              color: AquaponicsColors.textMuted,
-                              fontSize: 12,
+                              color: _teal,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
                         ),
                       ),
                       const SizedBox(height: 24),
-                      Container(
+                      SizedBox(
                         height: 50,
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [
-                              AquaponicsColors.primaryAccent,
-                              AquaponicsColors.brandGradientHeader,
-                            ],
-                          ),
-                          borderRadius: BorderRadius.circular(12),
-                          boxShadow: [
-                            BoxShadow(
-                              color: AquaponicsColors.primaryAccent.withValues(alpha: 0.3),
-                              blurRadius: 12,
-                              offset: const Offset(0, 6),
-                            ),
-                          ],
-                        ),
-                        child: ElevatedButton(
+                        child: FilledButton(
                           onPressed: _isLoading ? null : _handleAuth,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.transparent,
-                            shadowColor: Colors.transparent,
+                          style: FilledButton.styleFrom(
+                            backgroundColor: _teal,
+                            foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
@@ -314,7 +310,7 @@ class _SignInPageState extends State<SignInPage> {
                                   'Sign In',
                                   style: TextStyle(
                                     fontSize: 16,
-                                    fontWeight: FontWeight.bold,
+                                    fontWeight: FontWeight.w800,
                                     color: Colors.white,
                                   ),
                                 ),
@@ -334,54 +330,53 @@ class _SignInPageState extends State<SignInPage> {
 
   Widget _buildTextField({
     required TextEditingController controller,
-    required String label,
+    required String hint,
     required IconData icon,
     bool isPassword = false,
   }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            color: AquaponicsColors.textSecondary,
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-          ),
+    return TextFormField(
+      controller: controller,
+      obscureText: isPassword ? !_isPasswordVisible : false,
+      enableSuggestions: !isPassword,
+      autocorrect: !isPassword,
+      keyboardType: isPassword ? TextInputType.visiblePassword : TextInputType.emailAddress,
+      style: const TextStyle(
+        color: Color(0xFF1F2937),
+        fontSize: 15,
+        fontWeight: FontWeight.w600,
+      ),
+      decoration: InputDecoration(
+        filled: true,
+        fillColor: Colors.white,
+        prefixIcon: Icon(icon, color: _teal),
+        suffixIcon: isPassword
+            ? IconButton(
+                icon: Icon(
+                  _isPasswordVisible ? Icons.visibility_off : Icons.visibility,
+                  color: const Color(0xFF546E7A),
+                ),
+                onPressed: () => setState(() => _isPasswordVisible = !_isPasswordVisible),
+              )
+            : null,
+        hintText: hint,
+        hintStyle: const TextStyle(
+          color: Color(0xFF546E7A),
+          fontWeight: FontWeight.w500,
         ),
-        const SizedBox(height: 8),
-        Container(
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.2),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AquaponicsColors.subtleBorder),
-          ),
-          child: TextField(
-            controller: controller,
-            obscureText: isPassword ? !_isPasswordVisible : false,
-            enableSuggestions: !isPassword,
-            autocorrect: !isPassword,
-            keyboardType: isPassword ? TextInputType.visiblePassword : TextInputType.emailAddress,
-            style: const TextStyle(color: Colors.white),
-            decoration: InputDecoration(
-              prefixIcon: Icon(icon, color: AquaponicsColors.textMuted),
-              suffixIcon: isPassword
-                  ? IconButton(
-                      icon: Icon(
-                        _isPasswordVisible ? Icons.visibility_off : Icons.visibility,
-                        color: AquaponicsColors.textMuted,
-                      ),
-                      onPressed: () => setState(() => _isPasswordVisible = !_isPasswordVisible),
-                    )
-                  : null,
-              border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              hintText: isPassword ? '********' : 'name@example.com',
-              hintStyle: TextStyle(color: AquaponicsColors.textMuted.withValues(alpha: 0.5)),
-            ),
-          ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: _teal, width: 1.5),
         ),
-      ],
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: _teal, width: 1.5),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: _teal, width: 2.8),
+        ),
+      ),
     );
   }
 }

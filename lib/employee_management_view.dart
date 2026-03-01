@@ -90,7 +90,7 @@ class _EmployeeManagementViewState extends State<EmployeeManagementView> {
             onPressed: () async {
               Navigator.pop(dialogContext);
               try {
-                await _firestore.collection('user').doc(id).delete();
+                await _firestore.collection('employee').doc(id).delete();
                 if (!rootContext.mounted) return;
                 ScaffoldMessenger.of(rootContext).showSnackBar(
                   SnackBar(content: Text('Deleted "$name"')),
@@ -115,7 +115,7 @@ class _EmployeeManagementViewState extends State<EmployeeManagementView> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: _firestore.collection('user').snapshots(),
+        stream: _firestore.collection('employee').snapshots(),
         builder: (context, snapshot) {
           if (snapshot.hasError) {
             return Center(
@@ -132,7 +132,6 @@ class _EmployeeManagementViewState extends State<EmployeeManagementView> {
 
           final query = _searchCtrl.text.trim();
           final docs = (snapshot.data?.docs ?? [])
-              .where((d) => UserAccountService.isEmployeeRole((d.data()['role'] ?? '').toString()))
               .where((d) => _matchesSearch(d, query))
               .toList();
           docs.sort(_compareUserId);
