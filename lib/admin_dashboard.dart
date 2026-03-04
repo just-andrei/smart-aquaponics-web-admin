@@ -8,6 +8,7 @@ import 'employee_management_view.dart';
 import 'support_tickets_view.dart';
 import 'master_sets_view.dart';
 import 'user_account_service.dart';
+import 'login.dart';
 
 
 class AdminDashboard extends StatefulWidget {
@@ -33,6 +34,62 @@ class _AdminDashboardState extends State<AdminDashboard> {
   void initState() {
     super.initState();
     _accessFuture = _resolveAccess();
+  }
+
+  Future<bool> _confirmLogout() async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Logout'),
+          content: const Text('Are you sure you want to logout?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Logout'),
+            ),
+          ],
+        );
+      },
+    );
+    return result ?? false;
+  }
+
+  Future<void> _logoutAndGoToLogin() async {
+    final confirmed = await _confirmLogout();
+    if (!confirmed || !mounted) return;
+
+    try {
+      await FirebaseAuth.instance.signOut();
+      if (!mounted) return;
+      Navigator.of(context).pushReplacement(
+        PageRouteBuilder(
+          transitionDuration: const Duration(milliseconds: 300),
+          pageBuilder: (context, animation, secondaryAnimation) => LoginPage(
+            themeMode: widget.themeMode,
+            onThemeChanged: widget.onThemeChanged,
+          ),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            return FadeTransition(
+              opacity: CurvedAnimation(
+                parent: animation,
+                curve: Curves.easeInOut,
+              ),
+              child: child,
+            );
+          },
+        ),
+      );
+    } on FirebaseAuthException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message ?? 'Logout failed')),
+      );
+    }
   }
 
   Future<_SessionAccess> _resolveAccess() async {
@@ -135,7 +192,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
               final sidebarDividerColor = isDark ? const Color(0xFF1A2130) : const Color(0xFFE3E7EE);
 
               return Scaffold(
-                endDrawer: isMobile
+                drawer: isMobile
                     ? Drawer(
                         child: _buildSidebar(
                           isAdmin,
@@ -148,6 +205,22 @@ class _AdminDashboardState extends State<AdminDashboard> {
                     : null,
                 body: Row(
                   children: [
+                    if (showSidebar)
+                      Container(
+                        width: collapsedSidebar ? 76 : 248,
+                        decoration: BoxDecoration(
+                          color: sidebarBackground,
+                          border: Border(
+                            right: BorderSide(color: sidebarDividerColor),
+                          ),
+                        ),
+                        child: _buildSidebar(
+                          isAdmin,
+                          collapsed: collapsedSidebar,
+                          showToggle: isDesktop,
+                          isDark: isDark,
+                        ),
+                      ),
                     Expanded(
                       child: Stack(
                         children: [
@@ -158,7 +231,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                           if (isMobile)
                             Positioned(
                               top: 12,
-                              right: 12,
+                              left: 12,
                               child: Builder(
                                 builder: (context) => Material(
                                   color: Theme.of(context).cardColor,
@@ -166,7 +239,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                                   shape: const CircleBorder(),
                                   child: IconButton(
                                     icon: const Icon(Icons.menu),
-                                    onPressed: () => Scaffold.of(context).openEndDrawer(),
+                                    onPressed: () => Scaffold.of(context).openDrawer(),
                                   ),
                                 ),
                               ),
@@ -174,22 +247,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
                         ],
                       ),
                     ),
-                    if (showSidebar)
-                      Container(
-                        width: collapsedSidebar ? 76 : 248,
-                        decoration: BoxDecoration(
-                          color: sidebarBackground,
-                          border: Border(
-                            left: BorderSide(color: sidebarDividerColor),
-                          ),
-                        ),
-                        child: _buildSidebar(
-                          isAdmin,
-                          collapsed: collapsedSidebar,
-                          showToggle: isDesktop,
-                          isDark: isDark,
-                        ),
-                      ),
                   ],
                 ),
               );
@@ -220,7 +277,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
     final dividerColor = isDark ? const Color(0xFF1A2130) : const Color(0xFFE3E7EE);
     final brandTextColor = isDark ? Colors.white : const Color(0xFF111827);
-    final accentColor = AquaponicsColors.primaryAccent;
 
     return Column(
       children: [
@@ -234,13 +290,13 @@ class _AdminDashboardState extends State<AdminDashboard> {
             ),
           ),
           child: collapsed
-              ? Icon(Icons.water_drop, color: accentColor, size: 24)
+              ? Image.asset('image/logo.png', height: 24, fit: BoxFit.contain)
               : Row(
                   children: [
-                    Icon(Icons.water_drop, color: accentColor, size: 24),
+                    Image.asset('image/logo.png', height: 24, fit: BoxFit.contain),
                     const SizedBox(width: 10),
                     Text(
-                      'Smart Aquaponics',
+                      'LYTRA',
                       style: TextStyle(
                         color: brandTextColor,
                         fontSize: 16,
@@ -265,13 +321,18 @@ class _AdminDashboardState extends State<AdminDashboard> {
         ),
         Divider(color: dividerColor, height: 1),
         _buildBottomAction(
-          icon: widget.themeMode == ThemeMode.dark ? Icons.dark_mode : Icons.light_mode,
+          icon: (Theme.of(context).brightness == Brightness.dark)
+              ? Icons.dark_mode
+              : Icons.light_mode,
           label: 'Theme',
           collapsed: collapsed,
           isDark: isDark,
           onTap: () {
+            final currentThemeMode = Theme.of(context).brightness == Brightness.dark
+                ? ThemeMode.dark
+                : ThemeMode.light;
             widget.onThemeChanged(
-              widget.themeMode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark,
+              currentThemeMode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark,
             );
           },
         ),
@@ -281,16 +342,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
           color: AquaponicsColors.statusDanger,
           collapsed: collapsed,
           isDark: isDark,
-          onTap: () async {
-            try {
-              await FirebaseAuth.instance.signOut();
-            } on FirebaseAuthException catch (e) {
-              if (!mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text(e.message ?? 'Logout failed')),
-              );
-            }
-          },
+          onTap: _logoutAndGoToLogin,
         ),
         if (showToggle)
           _buildBottomAction(
@@ -336,7 +388,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 mainAxisAlignment:
                     collapsed ? MainAxisAlignment.center : MainAxisAlignment.start,
                 children: [
-                  const SizedBox(width: 12),
+                  if (!collapsed) const SizedBox(width: 12),
                   Icon(
                     item.icon,
                     size: 20,
@@ -387,7 +439,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
               mainAxisAlignment:
                   collapsed ? MainAxisAlignment.center : MainAxisAlignment.start,
               children: [
-                const SizedBox(width: 12),
+                if (!collapsed) const SizedBox(width: 12),
                 Icon(icon, size: 18, color: resolvedColor),
                 if (!collapsed) ...[
                   const SizedBox(width: 12),

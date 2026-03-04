@@ -36,7 +36,10 @@ class _EmployeeManagementViewState extends State<EmployeeManagementView> {
     return text.isEmpty ? fallback : text;
   }
 
-  bool _matchesSearch(QueryDocumentSnapshot<Map<String, dynamic>> doc, String query) {
+  bool _matchesSearch(
+    QueryDocumentSnapshot<Map<String, dynamic>> doc,
+    String query,
+  ) {
     if (query.isEmpty) return true;
     final data = doc.data();
     final firstName = _safeString(data['first_name']).toLowerCase();
@@ -67,7 +70,9 @@ class _EmployeeManagementViewState extends State<EmployeeManagementView> {
     return _sortUserIdAscending ? aId.compareTo(bId) : bId.compareTo(aId);
   }
 
-  Future<void> _showEmployeeDialog(DocumentSnapshot<Map<String, dynamic>>? document) async {
+  Future<void> _showEmployeeDialog(
+    DocumentSnapshot<Map<String, dynamic>>? document,
+  ) async {
     await showDialog<void>(
       context: context,
       builder: (_) => _EmployeeDialog(document: document),
@@ -92,14 +97,16 @@ class _EmployeeManagementViewState extends State<EmployeeManagementView> {
               try {
                 await _firestore.collection('employee').doc(id).delete();
                 if (!rootContext.mounted) return;
-                ScaffoldMessenger.of(rootContext).showSnackBar(
-                  SnackBar(content: Text('Deleted "$name"')),
-                );
+                ScaffoldMessenger.of(
+                  rootContext,
+                ).showSnackBar(SnackBar(content: Text('Deleted "$name"')));
               } on Object catch (e) {
                 if (!rootContext.mounted) return;
                 ScaffoldMessenger.of(rootContext).showSnackBar(
                   SnackBar(
-                    content: Text('Error deleting employee: ${_firebaseErrorMessage(e)}'),
+                    content: Text(
+                      'Error deleting employee: ${_firebaseErrorMessage(e)}',
+                    ),
                   ),
                 );
               }
@@ -216,14 +223,20 @@ class _EmployeeManagementViewState extends State<EmployeeManagementView> {
                     ),
                     OutlinedButton.icon(
                       onPressed: () {
-                        setState(() => _sortUserIdAscending = !_sortUserIdAscending);
+                        setState(
+                          () => _sortUserIdAscending = !_sortUserIdAscending,
+                        );
                       },
                       icon: Icon(
-                        _sortUserIdAscending ? Icons.arrow_upward : Icons.arrow_downward,
+                        _sortUserIdAscending
+                            ? Icons.arrow_upward
+                            : Icons.arrow_downward,
                         size: 16,
                       ),
                       label: Text(
-                        _sortUserIdAscending ? 'User ID Ascending' : 'User ID Descending',
+                        _sortUserIdAscending
+                            ? 'User ID Ascending'
+                            : 'User ID Descending',
                       ),
                     ),
                   ],
@@ -234,7 +247,10 @@ class _EmployeeManagementViewState extends State<EmployeeManagementView> {
                     padding: EdgeInsets.symmetric(vertical: 16),
                     child: Text(
                       'No employees found.',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   )
                 else
@@ -246,15 +262,15 @@ class _EmployeeManagementViewState extends State<EmployeeManagementView> {
                     dataRowMinHeight: 44,
                     dataRowMaxHeight: 44,
                     showCheckboxColumn: false,
-                  columns: const [
-                    DataColumn(label: Text('User ID')),
-                    DataColumn(label: Text('First Name')),
-                    DataColumn(label: Text('Last Name')),
-                    DataColumn(label: Text('Email')),
-                    DataColumn(label: Text('Phone Number')),
-                    DataColumn(label: Text('Address')),
-                    DataColumn(label: Text('Status')),
-                  ],
+                    columns: const [
+                      DataColumn(label: Text('User ID')),
+                      DataColumn(label: Text('First Name')),
+                      DataColumn(label: Text('Last Name')),
+                      DataColumn(label: Text('Email')),
+                      DataColumn(label: Text('Phone Number')),
+                      DataColumn(label: Text('Address')),
+                      DataColumn(label: Text('Status')),
+                    ],
                     source: _EmployeesDataSource(
                       docs: docs,
                       selectedDocId: _selectedDocId,
@@ -344,11 +360,19 @@ class _EmployeeDialogState extends State<_EmployeeDialog> {
   void initState() {
     super.initState();
     final data = widget.document?.data() ?? <String, dynamic>{};
-    _firstNameCtrl = TextEditingController(text: data['first_name']?.toString() ?? '');
-    _lastNameCtrl = TextEditingController(text: data['last_name']?.toString() ?? '');
+    _firstNameCtrl = TextEditingController(
+      text: data['first_name']?.toString() ?? '',
+    );
+    _lastNameCtrl = TextEditingController(
+      text: data['last_name']?.toString() ?? '',
+    );
     _emailCtrl = TextEditingController(text: data['email']?.toString() ?? '');
-    _phoneNumberCtrl = TextEditingController(text: data['phone_num']?.toString() ?? '');
-    _addressCtrl = TextEditingController(text: data['address']?.toString() ?? '');
+    _phoneNumberCtrl = TextEditingController(
+      text: data['phone_num']?.toString() ?? '',
+    );
+    _addressCtrl = TextEditingController(
+      text: data['address']?.toString() ?? '',
+    );
     _status = (data['status']?.toString() ?? 'active').trim().toLowerCase();
   }
 
@@ -391,7 +415,9 @@ class _EmployeeDialogState extends State<_EmployeeDialog> {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Employee created. Temporary password: ${result.temporaryPassword}'),
+            content: Text(
+              'Employee created. Temporary password: ${result.temporaryPassword}',
+            ),
             duration: const Duration(seconds: 12),
           ),
         );
@@ -401,7 +427,9 @@ class _EmployeeDialogState extends State<_EmployeeDialog> {
     } on Object catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error saving employee: ${_firebaseErrorMessage(e)}')),
+        SnackBar(
+          content: Text('Error saving employee: ${_firebaseErrorMessage(e)}'),
+        ),
       );
     } finally {
       if (mounted) setState(() => _isSaving = false);
@@ -508,7 +536,11 @@ class _EmployeeDialogState extends State<_EmployeeDialog> {
                   const SizedBox(width: 12),
                   FilledButton(
                     onPressed: _isSaving ? null : _save,
-                    child: Text(_isSaving ? 'Saving...' : (_isEditing ? 'Update' : 'Create')),
+                    child: Text(
+                      _isSaving
+                          ? 'Saving...'
+                          : (_isEditing ? 'Update' : 'Create'),
+                    ),
                   ),
                 ],
               ),

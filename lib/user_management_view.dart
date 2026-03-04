@@ -15,10 +15,7 @@ String _firebaseErrorMessage(Object error) {
 class UserManagementView extends StatefulWidget {
   final String currentUserRole;
 
-  const UserManagementView({
-    super.key,
-    required this.currentUserRole,
-  });
+  const UserManagementView({super.key, required this.currentUserRole});
 
   @override
   State<UserManagementView> createState() => _UserManagementViewState();
@@ -31,8 +28,7 @@ class _UserManagementViewState extends State<UserManagementView> {
   bool _sortUserIdAscending = true;
 
   bool get _isAdmin => UserAccountService.isAdminRole(widget.currentUserRole);
-  bool get _isEmployee => UserAccountService.isEmployeeRole(widget.currentUserRole);
-  bool get _canManageUsers => _isAdmin || _isEmployee;
+  bool get _canUpdateOrDeleteGrowers => _isAdmin;
 
   String _safeString(dynamic value, {String fallback = ''}) {
     final text = value?.toString().trim() ?? '';
@@ -45,7 +41,10 @@ class _UserManagementViewState extends State<UserManagementView> {
     return UserAccountService.isGrowerRole(normalized);
   }
 
-  bool _matchesSearch(QueryDocumentSnapshot<Map<String, dynamic>> doc, String query) {
+  bool _matchesSearch(
+    QueryDocumentSnapshot<Map<String, dynamic>> doc,
+    String query,
+  ) {
     if (query.isEmpty) return true;
     final data = doc.data();
     final firstName = _safeString(data['first_name']).toLowerCase();
@@ -74,9 +73,7 @@ class _UserManagementViewState extends State<UserManagementView> {
       return _sortUserIdAscending ? aNum.compareTo(bNum) : bNum.compareTo(aNum);
     }
 
-    return _sortUserIdAscending
-        ? aId.compareTo(bId)
-        : bId.compareTo(aId);
+    return _sortUserIdAscending ? aId.compareTo(bId) : bId.compareTo(aId);
   }
 
   @override
@@ -139,12 +136,14 @@ class _UserManagementViewState extends State<UserManagementView> {
                         onPressed: () => _showUserDialog(null),
                         child: const Text('Create'),
                       ),
-                      if (_canManageUsers)
+                      if (_canUpdateOrDeleteGrowers)
                         OutlinedButton(
-                          onPressed: selectedDoc == null ? null : () => _editUser(selectedDoc!),
+                          onPressed: selectedDoc == null
+                              ? null
+                              : () => _editUser(selectedDoc!),
                           child: const Text('Update'),
                         ),
-                      if (_canManageUsers)
+                      if (_canUpdateOrDeleteGrowers)
                         FilledButton(
                           onPressed: selectedDoc == null
                               ? null
@@ -157,7 +156,9 @@ class _UserManagementViewState extends State<UserManagementView> {
                                   _deleteUser(selectedDoc.id, fullName);
                                 },
                           style: FilledButton.styleFrom(
-                            backgroundColor: Theme.of(context).colorScheme.error,
+                            backgroundColor: Theme.of(
+                              context,
+                            ).colorScheme.error,
                           ),
                           child: const Text('Delete'),
                         ),
@@ -191,10 +192,14 @@ class _UserManagementViewState extends State<UserManagementView> {
                     ),
                     OutlinedButton.icon(
                       onPressed: () {
-                        setState(() => _sortUserIdAscending = !_sortUserIdAscending);
+                        setState(
+                          () => _sortUserIdAscending = !_sortUserIdAscending,
+                        );
                       },
                       icon: Icon(
-                        _sortUserIdAscending ? Icons.arrow_upward : Icons.arrow_downward,
+                        _sortUserIdAscending
+                            ? Icons.arrow_upward
+                            : Icons.arrow_downward,
                         size: 16,
                       ),
                       label: Text(
@@ -289,14 +294,16 @@ class _UserManagementViewState extends State<UserManagementView> {
               try {
                 await _firestore.collection('user').doc(id).delete();
                 if (!rootContext.mounted) return;
-                ScaffoldMessenger.of(rootContext).showSnackBar(
-                  SnackBar(content: Text('Deleted "$name"')),
-                );
+                ScaffoldMessenger.of(
+                  rootContext,
+                ).showSnackBar(SnackBar(content: Text('Deleted "$name"')));
               } on Object catch (e) {
                 if (!rootContext.mounted) return;
                 ScaffoldMessenger.of(rootContext).showSnackBar(
                   SnackBar(
-                    content: Text('Error deleting user: ${_firebaseErrorMessage(e)}'),
+                    content: Text(
+                      'Error deleting user: ${_firebaseErrorMessage(e)}',
+                    ),
                   ),
                 );
               }
@@ -314,11 +321,8 @@ class _UserManagementViewState extends State<UserManagementView> {
     final email = _safeString(data['email']);
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => _UserDetailsPage(
-          userDocId: doc.id,
-          userId: userId,
-          email: email,
-        ),
+        builder: (_) =>
+            _UserDetailsPage(userDocId: doc.id, userId: userId, email: email),
       ),
     );
   }
@@ -353,7 +357,10 @@ class _UsersDataSource extends DataTableSource {
     final email = _safeString(data['email']);
     final phoneNumber = _safeString(data['phone_num']);
     final address = _safeString(data['address']);
-    final status = _safeString(data['status'], fallback: 'active').toLowerCase();
+    final status = _safeString(
+      data['status'],
+      fallback: 'active',
+    ).toLowerCase();
     final userId = _safeString(data['user_id'], fallback: doc.id);
 
     return DataRow.byIndex(
@@ -362,7 +369,9 @@ class _UsersDataSource extends DataTableSource {
       onSelectChanged: (selected) => onSelect(selected == true ? doc.id : null),
       cells: [
         DataCell(Text(userId, overflow: TextOverflow.ellipsis)),
-        DataCell(Text(firstName, style: const TextStyle(fontWeight: FontWeight.w600))),
+        DataCell(
+          Text(firstName, style: const TextStyle(fontWeight: FontWeight.w600)),
+        ),
         DataCell(Text(lastName)),
         DataCell(Text(email)),
         DataCell(Text(phoneNumber)),
@@ -388,7 +397,7 @@ class _UsersDataSource extends DataTableSource {
   int get selectedRowCount => 0;
 }
 
-class _UserDetailsPage extends StatelessWidget {
+class _UserDetailsPage extends StatefulWidget {
   final String userDocId;
   final String userId;
   final String email;
@@ -399,6 +408,42 @@ class _UserDetailsPage extends StatelessWidget {
     required this.email,
   });
 
+  @override
+  State<_UserDetailsPage> createState() => _UserDetailsPageState();
+}
+
+class _UserDetailsPageState extends State<_UserDetailsPage> {
+  String _selectedAverageRange = 'Daily';
+
+  static const List<String> _averageRanges = ['Daily', 'Weekly', 'Monthly'];
+
+  Map<String, dynamic> _asStringMap(dynamic value) {
+    if (value is Map<String, dynamic>) return value;
+    if (value is Map) {
+      return value.map((key, val) => MapEntry(key.toString(), val));
+    }
+    return <String, dynamic>{};
+  }
+
+  String _selectedRangeKey() {
+    switch (_selectedAverageRange) {
+      case 'Weekly':
+        return 'weekly';
+      case 'Monthly':
+        return 'monthly';
+      case 'Daily':
+      default:
+        return 'daily';
+    }
+  }
+
+  String _formatAverageReading(dynamic value, {String unit = ''}) {
+    if (value == null) return '-';
+    final text = value.toString().trim();
+    if (text.isEmpty) return '-';
+    return unit.isEmpty ? text : '$text $unit';
+  }
+
   String _formatValue(dynamic value) {
     if (value == null) return '-';
     if (value is Timestamp) return value.toDate().toString();
@@ -407,89 +452,610 @@ class _UserDetailsPage extends StatelessWidget {
     return text.isEmpty ? '-' : text;
   }
 
+  String _formatFieldName(String key) {
+    if (key.trim().isEmpty) return '-';
+    final words = key
+        .split('_')
+        .where((part) => part.trim().isNotEmpty)
+        .map(
+          (part) =>
+              '${part[0].toUpperCase()}${part.length > 1 ? part.substring(1).toLowerCase() : ''}',
+        )
+        .toList();
+    return words.join(' ');
+  }
+
+  Widget _buildSectionCard({
+    required BuildContext context,
+    required String title,
+    required Color accentColor,
+    required Widget child,
+    Widget? trailing,
+  }) {
+    final titleColor = Colors.white;
+    final bodyColor = accentColor.withOpacity(0.06);
+    final borderColor = accentColor.withOpacity(0.24);
+
+    return Card(
+      elevation: 1.5,
+      margin: EdgeInsets.zero,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: borderColor),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [accentColor, accentColor.withOpacity(0.86)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    title,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: titleColor,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                if (trailing != null) trailing,
+              ],
+            ),
+          ),
+          Container(
+            color: bodyColor,
+            padding: const EdgeInsets.all(16),
+            child: child,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTableShell({
+    required Widget child,
+    Color backgroundColor = Colors.white,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFD8E2E0)),
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: child,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('User Details')),
-      body: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-        stream: FirebaseFirestore.instance.collection('user').doc(userDocId).snapshots(),
-        builder: (context, userSnapshot) {
-          if (userSnapshot.hasError) {
-            return Center(
-              child: Text(
-                'Error loading user details: ${userSnapshot.error}',
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
+      backgroundColor: const Color(0xFFF2F6F5),
+      appBar: AppBar(
+        title: const Text('User Details'),
+        backgroundColor: const Color(0xFF0F766E),
+        foregroundColor: Colors.white,
+      ),
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Color(0xFFF2F6F5), Color(0xFFEAF1EF)],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ),
+        ),
+        child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+          stream: FirebaseFirestore.instance
+              .collection('user')
+              .doc(widget.userDocId)
+              .snapshots(),
+          builder: (context, userSnapshot) {
+            if (userSnapshot.hasError) {
+              return Center(
+                child: Text(
+                  'Error loading user details: ${userSnapshot.error}',
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              );
+            }
+            if (userSnapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            final userData = userSnapshot.data?.data();
+            if (userData == null) {
+              return const Center(child: Text('User document not found.'));
+            }
+
+            final averagesMap = _asStringMap(userData['sensor_averages']);
+            final selectedKey = _selectedRangeKey();
+            final currentAverages = _asStringMap(averagesMap[selectedKey]);
+            final sensorAverageRows = <DataRow>[
+              DataRow(
+                cells: [
+                  const DataCell(Text('Water Temperature (\u00B0C)')),
+                  DataCell(
+                    Text(
+                      _formatAverageReading(
+                        currentAverages['temp'],
+                        unit: '\u00B0C',
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              DataRow(
+                cells: [
+                  const DataCell(Text('pH Level')),
+                  DataCell(Text(_formatAverageReading(currentAverages['ph']))),
+                ],
+              ),
+              DataRow(
+                cells: [
+                  const DataCell(Text('Dissolved Oxygen (mg/L)')),
+                  DataCell(
+                    Text(
+                      _formatAverageReading(currentAverages['do'], unit: 'mg/L'),
+                    ),
+                  ),
+                ],
+              ),
+              DataRow(
+                cells: [
+                  const DataCell(Text('Ammonia (ppm)')),
+                  DataCell(
+                    Text(
+                      _formatAverageReading(
+                        currentAverages['ammonia'],
+                        unit: 'ppm',
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              DataRow(
+                cells: [
+                  const DataCell(Text('Salinity (ppt)')),
+                  DataCell(
+                    Text(
+                      _formatAverageReading(
+                        currentAverages['salinity'],
+                        unit: 'ppt',
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              DataRow(
+                cells: [
+                  const DataCell(Text('Turbidity (NTU)')),
+                  DataCell(
+                    Text(
+                      _formatAverageReading(
+                        currentAverages['turbidity'],
+                        unit: 'NTU',
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ];
+
+            const hiddenProfileFields = {
+              'active_plant_id',
+              'active_fish_id',
+              'current_plant_id',
+              'current_fish_id',
+              'sensor_averages',
+              'harvers_totals',
+              'harvest_totals',
+              'aquaculture_info',
+              'plant_info',
+              'harvest_info',
+              'updated_at',
+              'updated_by',
+              'user_id',
+            };
+            final keys =
+                userData.keys
+                    .where((key) => !hiddenProfileFields.contains(key))
+                    .toList()
+                  ..sort();
+
+            const extraProfileRows = [
+              DataRow(
+                cells: [
+                  DataCell(Text('Participant Join Date')),
+                  DataCell(Text('January 15, 2026')),
+                ],
+              ),
+            ];
+
+            final profileRows = <DataRow>[];
+            var hasInsertedExtras = false;
+            for (final key in keys) {
+              profileRows.add(
+                DataRow(
+                  cells: [
+                    DataCell(Text(_formatFieldName(key))),
+                    DataCell(Text(_formatValue(userData[key]))),
+                  ],
+                ),
+              );
+              if (!hasInsertedExtras && key == 'status') {
+                profileRows.addAll(extraProfileRows);
+                hasInsertedExtras = true;
+              }
+            }
+            if (!hasInsertedExtras) {
+              profileRows.addAll(extraProfileRows);
+            }
+
+            final profileCard = _buildSectionCard(
+              context: context,
+              title: 'Profile',
+              accentColor: const Color(0xFF1D4ED8),
+              child: _buildTableShell(
+                child: DataTable(
+                  columns: const [
+                    DataColumn(label: Text('Information')),
+                    DataColumn(label: Text('Details')),
+                  ],
+                  rows: profileRows,
+                ),
               ),
             );
-          }
-          if (userSnapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
 
-          final userData = userSnapshot.data?.data();
-          if (userData == null) {
-            return const Center(child: Text('User document not found.'));
-          }
-
-          final keys = userData.keys.toList()..sort();
-
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Profile',
-                          style: Theme.of(context).textTheme.titleMedium,
+            final sensorAveragesCard = _buildSectionCard(
+              context: context,
+              title: 'Average Sensor Readings',
+              accentColor: const Color(0xFF0F766E),
+              trailing: SizedBox(
+                width: 130,
+                child: DropdownButtonFormField<String>(
+                  value: _selectedAverageRange,
+                  isExpanded: true,
+                  dropdownColor: Colors.white,
+                  style: const TextStyle(
+                    color: Color(0xFF0F172A),
+                    fontSize: 14,
+                  ),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    filled: true,
+                    fillColor: Colors.white,
+                    hintText: 'Daily',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                  ),
+                  items: _averageRanges
+                      .map(
+                        (range) => DropdownMenuItem<String>(
+                          value: range,
+                          child: Text(range),
                         ),
-                        const SizedBox(height: 12),
-                        DataTable(
-                          columns: const [
-                            DataColumn(label: Text('Field')),
-                            DataColumn(label: Text('Value')),
+                      )
+                      .toList(),
+                  onChanged: (value) {
+                    if (value == null) return;
+                    setState(() => _selectedAverageRange = value);
+                  },
+                ),
+              ),
+              child: _buildTableShell(
+                child: DataTable(
+                  columns: const [
+                    DataColumn(label: Text('Parameter')),
+                    DataColumn(label: Text('Average Reading')),
+                  ],
+                  rows: sensorAverageRows,
+                ),
+              ),
+            );
+
+            const aquacultureInfoRows = [
+              DataRow(
+                cells: [
+                  DataCell(Text('Fish Species')),
+                  DataCell(Text('Catfish')),
+                ],
+              ),
+              DataRow(
+                cells: [
+                  DataCell(Text('Stocking Date')),
+                  DataCell(Text('January 20, 2026')),
+                ],
+              ),
+              DataRow(
+                cells: [
+                  DataCell(Text('Initial Stock Quantity')),
+                  DataCell(Text('50')),
+                ],
+              ),
+              DataRow(
+                cells: [
+                  DataCell(Text('Current Population')),
+                  DataCell(Text('50')),
+                ],
+              ),
+              DataRow(
+                cells: [
+                  DataCell(Text('Average Fish Size')),
+                  DataCell(Text('Small, Medium, Big')),
+                ],
+              ),
+              DataRow(
+                cells: [
+                  DataCell(Text('Survival Rate')),
+                  DataCell(Text('100%')),
+                ],
+              ),
+              DataRow(
+                cells: [
+                  DataCell(Text('Monitoring Schedule')),
+                  DataCell(Text('Every 1st of the month')),
+                ],
+              ),
+            ];
+
+            final aquacultureInfoCard = _buildSectionCard(
+              context: context,
+              title: 'Aquaculture Information',
+              accentColor: const Color(0xFF0369A1),
+              child: _buildTableShell(
+                child: DataTable(
+                  columns: const [
+                    DataColumn(label: Text('Information')),
+                    DataColumn(label: Text('Details')),
+                  ],
+                  rows: aquacultureInfoRows,
+                ),
+              ),
+            );
+
+            const plantInfoRows = [
+              DataRow(
+                cells: [DataCell(Text('Crop Type')), DataCell(Text('Basil'))],
+              ),
+              DataRow(
+                cells: [DataCell(Text('Overall Batches')), DataCell(Text('5'))],
+              ),
+              DataRow(
+                cells: [
+                  DataCell(Text('Crops Per Batch')),
+                  DataCell(Text('30')),
+                ],
+              ),
+              DataRow(
+                cells: [
+                  DataCell(Text('Current Batch')),
+                  DataCell(Text('Batch 2')),
+                ],
+              ),
+              DataRow(
+                cells: [
+                  DataCell(Text('Planting Date')),
+                  DataCell(Text('February 3, 2026')),
+                ],
+              ),
+              DataRow(
+                cells: [
+                  DataCell(Text('Expected Harvest Date')),
+                  DataCell(Text('March 28, 2026')),
+                ],
+              ),
+              DataRow(
+                cells: [
+                  DataCell(Text('Growth Stage')),
+                  DataCell(Text('Vegetative')),
+                ],
+              ),
+              DataRow(
+                cells: [
+                  DataCell(Text('Crop Status')),
+                  DataCell(Text('Healthy')),
+                ],
+              ),
+              DataRow(
+                cells: [
+                  DataCell(Text('Monitoring Schedule')),
+                  DataCell(Text('Every Monday')),
+                ],
+              ),
+            ];
+
+            final plantInfoCard = _buildSectionCard(
+              context: context,
+              title: 'Plant Information',
+              accentColor: const Color(0xFF4D7C0F),
+              child: _buildTableShell(
+                child: DataTable(
+                  columns: const [
+                    DataColumn(label: Text('Information')),
+                    DataColumn(label: Text('Details')),
+                  ],
+                  rows: plantInfoRows,
+                ),
+              ),
+            );
+
+            const aquacultureHarvestRows = [
+              DataRow(
+                cells: [
+                  DataCell(Text('Total Fish Harvested')),
+                  DataCell(Text('45')),
+                ],
+              ),
+              DataRow(
+                cells: [
+                  DataCell(Text('Average Fish Size')),
+                  DataCell(Text('Big')),
+                ],
+              ),
+              DataRow(
+                cells: [
+                  DataCell(Text('Survival Rate')),
+                  DataCell(Text('90.0%')),
+                ],
+              ),
+            ];
+
+            final aquacultureHarvestCard = _buildSectionCard(
+              context: context,
+              title: 'Aquaculture Harvest Information',
+              accentColor: const Color(0xFF0C4A6E),
+              child: _buildTableShell(
+                child: DataTable(
+                  columns: const [
+                    DataColumn(label: Text('Information')),
+                    DataColumn(label: Text('Details')),
+                  ],
+                  rows: aquacultureHarvestRows,
+                ),
+              ),
+            );
+
+            const plantHarvestRows = [
+              DataRow(
+                cells: [
+                  DataCell(Text('Total Number of Plant Batches')),
+                  DataCell(Text('5')),
+                ],
+              ),
+              DataRow(
+                cells: [
+                  DataCell(Text('Total Plants Harvested')),
+                  DataCell(Text('150')),
+                ],
+              ),
+              DataRow(
+                cells: [
+                  DataCell(Text('Average Yield Per Batch')),
+                  DataCell(Text('30 plants')),
+                ],
+              ),
+            ];
+
+            final plantHarvestCard = _buildSectionCard(
+              context: context,
+              title: 'Plant Harvest Information',
+              accentColor: const Color(0xFF3F6212),
+              child: _buildTableShell(
+                child: DataTable(
+                  columns: const [
+                    DataColumn(label: Text('Information')),
+                    DataColumn(label: Text('Details')),
+                  ],
+                  rows: plantHarvestRows,
+                ),
+              ),
+            );
+
+            final historyCard = _buildSectionCard(
+              context: context,
+              title: 'User History',
+              accentColor: const Color(0xFFB45309),
+              child: _UserHistoryTable(userId: widget.userId),
+            );
+
+            return LayoutBuilder(
+              builder: (context, constraints) {
+                final showSideBySide = constraints.maxWidth >= 1100;
+
+                return SingleChildScrollView(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (showSideBySide)
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(child: profileCard),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  sensorAveragesCard,
+                                  const SizedBox(height: 16),
+                                  historyCard,
+                                ],
+                              ),
+                            ),
                           ],
-                          rows: keys
-                              .map(
-                                (key) => DataRow(
-                                  cells: [
-                                    DataCell(Text(key)),
-                                    DataCell(Text(_formatValue(userData[key]))),
-                                  ],
-                                ),
-                              )
-                              .toList(),
-                        ),
+                        )
+                      else ...[
+                        profileCard,
+                        const SizedBox(height: 16),
+                        sensorAveragesCard,
+                        const SizedBox(height: 16),
+                        historyCard,
                       ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Support Tickets',
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        const SizedBox(height: 12),
-                        _UserTicketsTable(userId: userId, email: email),
+                      const SizedBox(height: 16),
+                      if (showSideBySide)
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(child: aquacultureInfoCard),
+                            const SizedBox(width: 16),
+                            Expanded(child: plantInfoCard),
+                          ],
+                        )
+                      else ...[
+                        aquacultureInfoCard,
+                        const SizedBox(height: 16),
+                        plantInfoCard,
                       ],
-                    ),
+                      const SizedBox(height: 16),
+                      if (showSideBySide)
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(child: aquacultureHarvestCard),
+                            const SizedBox(width: 16),
+                            Expanded(child: plantHarvestCard),
+                          ],
+                        )
+                      else ...[
+                        aquacultureHarvestCard,
+                        const SizedBox(height: 16),
+                        plantHarvestCard,
+                      ],
+                      const SizedBox(height: 16),
+                      _buildSectionCard(
+                        context: context,
+                        title: 'Support Tickets',
+                        accentColor: const Color(0xFF0E7490),
+                        child: _UserTicketsTable(
+                          userId: widget.userId,
+                          email: widget.email,
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-              ],
-            ),
-          );
-        },
+                );
+              },
+            );
+          },
+        ),
       ),
     );
   }
@@ -499,10 +1065,7 @@ class _UserTicketsTable extends StatelessWidget {
   final String userId;
   final String email;
 
-  const _UserTicketsTable({
-    required this.userId,
-    required this.email,
-  });
+  const _UserTicketsTable({required this.userId, required this.email});
 
   String _safe(dynamic value, {String fallback = '-'}) {
     final text = value?.toString().trim() ?? '';
@@ -571,14 +1134,126 @@ class _UserTicketsTable extends StatelessWidget {
   }
 }
 
+class _UserHistoryTable extends StatelessWidget {
+  final String userId;
+
+  const _UserHistoryTable({required this.userId});
+
+  String _safeText(dynamic value, {String fallback = '-'}) {
+    final text = value?.toString().trim() ?? '';
+    return text.isEmpty ? fallback : text;
+  }
+
+  DateTime? _asDateTime(dynamic value) {
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+    if (value is String) return DateTime.tryParse(value);
+    return null;
+  }
+
+  String _formatDateTime(dynamic value) {
+    final dt = _asDateTime(value);
+    if (dt == null) return _safeText(value);
+    final local = dt.toLocal();
+    final mm = local.month.toString().padLeft(2, '0');
+    final dd = local.day.toString().padLeft(2, '0');
+    final hh = local.hour.toString().padLeft(2, '0');
+    final min = local.minute.toString().padLeft(2, '0');
+    return '${local.year}-$mm-$dd $hh:$min';
+  }
+
+  String _notificationEvent(Map<String, dynamic> data) {
+    return _safeText(
+      data['message'] ??
+          data['event'] ??
+          data['title'] ??
+          data['body'] ??
+          data['description'],
+      fallback: 'Notification',
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final numericUserId = int.tryParse(userId);
+    final notificationsStream = numericUserId != null
+        ? FirebaseFirestore.instance
+              .collection('notifications')
+              .where('user_id', isEqualTo: numericUserId)
+              .snapshots()
+        : FirebaseFirestore.instance
+              .collection('notifications')
+              .where('user_id', isEqualTo: userId)
+              .snapshots();
+
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: notificationsStream,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Text(
+            'Error loading history: ${snapshot.error}',
+            style: TextStyle(color: Theme.of(context).colorScheme.error),
+          );
+        }
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 12),
+            child: CircularProgressIndicator(),
+          );
+        }
+
+        final docs = (snapshot.data?.docs ?? []).toList()
+          ..sort((a, b) {
+            final aData = a.data();
+            final bData = b.data();
+            final aDate = _asDateTime(
+              aData['created_at'] ?? aData['timestamp'] ?? aData['date'],
+            );
+            final bDate = _asDateTime(
+              bData['created_at'] ?? bData['timestamp'] ?? bData['date'],
+            );
+            if (aDate == null && bDate == null) return 0;
+            if (aDate == null) return 1;
+            if (bDate == null) return -1;
+            return bDate.compareTo(aDate);
+          });
+
+        if (docs.isEmpty) {
+          return Text('No notification history found for user_id "$userId".');
+        }
+
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: DataTable(
+            columns: const [
+              DataColumn(label: Text('Date & Time')),
+              DataColumn(label: Text('Event')),
+              DataColumn(label: Text('User ID')),
+            ],
+            rows: docs.map((doc) {
+              final data = doc.data();
+              final when =
+                  data['created_at'] ?? data['timestamp'] ?? data['date'];
+              return DataRow(
+                cells: [
+                  DataCell(Text(_formatDateTime(when))),
+                  DataCell(Text(_notificationEvent(data))),
+                  DataCell(Text(_safeText(data['user_id'], fallback: userId))),
+                ],
+              );
+            }).toList(),
+          ),
+        );
+      },
+    );
+  }
+}
+
 class _UserDialog extends StatefulWidget {
   final DocumentSnapshot<Map<String, dynamic>>? document;
   final String currentUserRole;
 
-  const _UserDialog({
-    this.document,
-    required this.currentUserRole,
-  });
+  const _UserDialog({this.document, required this.currentUserRole});
 
   @override
   State<_UserDialog> createState() => _UserDialogState();
@@ -599,11 +1274,19 @@ class _UserDialogState extends State<_UserDialog> {
   void initState() {
     super.initState();
     final data = widget.document?.data() ?? <String, dynamic>{};
-    _firstNameCtrl = TextEditingController(text: data['first_name']?.toString() ?? '');
-    _lastNameCtrl = TextEditingController(text: data['last_name']?.toString() ?? '');
+    _firstNameCtrl = TextEditingController(
+      text: data['first_name']?.toString() ?? '',
+    );
+    _lastNameCtrl = TextEditingController(
+      text: data['last_name']?.toString() ?? '',
+    );
     _emailCtrl = TextEditingController(text: data['email']?.toString() ?? '');
-    _phoneNumberCtrl = TextEditingController(text: data['phone_num']?.toString() ?? '');
-    _addressCtrl = TextEditingController(text: data['address']?.toString() ?? '');
+    _phoneNumberCtrl = TextEditingController(
+      text: data['phone_num']?.toString() ?? '',
+    );
+    _addressCtrl = TextEditingController(
+      text: data['address']?.toString() ?? '',
+    );
   }
 
   @override
@@ -644,7 +1327,9 @@ class _UserDialogState extends State<_UserDialog> {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Grower created. Temporary password: ${result.temporaryPassword}'),
+            content: Text(
+              'Grower created. Temporary password: ${result.temporaryPassword}',
+            ),
             duration: const Duration(seconds: 12),
           ),
         );
@@ -654,7 +1339,9 @@ class _UserDialogState extends State<_UserDialog> {
     } on Object catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error saving user: ${_firebaseErrorMessage(e)}')),
+        SnackBar(
+          content: Text('Error saving user: ${_firebaseErrorMessage(e)}'),
+        ),
       );
     } finally {
       if (mounted) setState(() => _isSaving = false);
@@ -752,7 +1439,11 @@ class _UserDialogState extends State<_UserDialog> {
                   const SizedBox(width: 12),
                   FilledButton(
                     onPressed: _isSaving ? null : _save,
-                    child: Text(_isSaving ? 'Saving...' : (_isEditing ? 'Update' : 'Create')),
+                    child: Text(
+                      _isSaving
+                          ? 'Saving...'
+                          : (_isEditing ? 'Update' : 'Create'),
+                    ),
                   ),
                 ],
               ),

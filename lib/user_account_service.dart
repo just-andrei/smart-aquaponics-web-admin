@@ -10,10 +10,7 @@ class CreatedUserResult {
   final String uid;
   final String temporaryPassword;
 
-  const CreatedUserResult({
-    required this.uid,
-    required this.temporaryPassword,
-  });
+  const CreatedUserResult({required this.uid, required this.temporaryPassword});
 }
 
 class UserProfileRecord {
@@ -122,7 +119,9 @@ class UserAccountService {
         'created_at': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
-      await FirebaseAuth.instance.sendPasswordResetEmail(email: normalizedEmail);
+      await FirebaseAuth.instance.sendPasswordResetEmail(
+        email: normalizedEmail,
+      );
       await secondaryAuth.signOut();
 
       return CreatedUserResult(uid: uid, temporaryPassword: temporaryPassword);
@@ -133,13 +132,21 @@ class UserAccountService {
 
   static Future<UserProfileRecord?> getProfileByUid(String uid) async {
     for (final collection in roleCollectionsInPriority) {
-      final doc = await FirebaseFirestore.instance.collection(collection).doc(uid).get();
-      if (doc.exists && doc.data() != null) {
-        return UserProfileRecord(
-          collection: collection,
-          uid: uid,
-          data: doc.data()!,
-        );
+      try {
+        final doc = await FirebaseFirestore.instance
+            .collection(collection)
+            .doc(uid)
+            .get();
+        if (doc.exists && doc.data() != null) {
+          return UserProfileRecord(
+            collection: collection,
+            uid: uid,
+            data: doc.data()!,
+          );
+        }
+      } on FirebaseException catch (e) {
+        // Some rulesets deny cross-collection reads. Skip denied collections.
+        if (e.code != 'permission-denied') rethrow;
       }
     }
     return null;
@@ -156,18 +163,22 @@ class UserAccountService {
     if (normalizedEmail.isEmpty) return null;
 
     for (final collection in roleCollectionsInPriority) {
-      final byEmail = await FirebaseFirestore.instance
-          .collection(collection)
-          .where('email', isEqualTo: normalizedEmail)
-          .limit(1)
-          .get();
-      if (byEmail.docs.isNotEmpty) {
-        final doc = byEmail.docs.first;
-        return UserProfileRecord(
-          collection: collection,
-          uid: doc.id,
-          data: doc.data(),
-        );
+      try {
+        final byEmail = await FirebaseFirestore.instance
+            .collection(collection)
+            .where('email', isEqualTo: normalizedEmail)
+            .limit(1)
+            .get();
+        if (byEmail.docs.isNotEmpty) {
+          final doc = byEmail.docs.first;
+          return UserProfileRecord(
+            collection: collection,
+            uid: doc.id,
+            data: doc.data(),
+          );
+        }
+      } on FirebaseException catch (e) {
+        if (e.code != 'permission-denied') rethrow;
       }
     }
     return null;
@@ -186,44 +197,63 @@ class UserAccountService {
     if (normalized.isEmpty) return null;
 
     for (final collection in roleCollectionsInPriority) {
-      // 1) Direct UID/doc-id lookup.
-      final byUid = await FirebaseFirestore.instance.collection(collection).doc(normalized).get();
-      if (byUid.exists && byUid.data() != null) {
-        final email = (byUid.data()!['email'] ?? '').toString().trim().toLowerCase();
-        if (email.isNotEmpty) return email;
-      }
+      try {
+        // 1) Direct UID/doc-id lookup.
+        final byUid = await FirebaseFirestore.instance
+            .collection(collection)
+            .doc(normalized)
+            .get();
+        if (byUid.exists && byUid.data() != null) {
+          final email = (byUid.data()!['email'] ?? '')
+              .toString()
+              .trim()
+              .toLowerCase();
+          if (email.isNotEmpty) return email;
+        }
 
-      // 2) Username lookup.
-      final byUsername = await FirebaseFirestore.instance
-          .collection(collection)
-          .where('username', isEqualTo: normalized)
-          .limit(1)
-          .get();
-      if (byUsername.docs.isNotEmpty) {
-        final email = (byUsername.docs.first.data()['email'] ?? '').toString().trim().toLowerCase();
-        if (email.isNotEmpty) return email;
-      }
+        // 2) Username lookup.
+        final byUsername = await FirebaseFirestore.instance
+            .collection(collection)
+            .where('username', isEqualTo: normalized)
+            .limit(1)
+            .get();
+        if (byUsername.docs.isNotEmpty) {
+          final email = (byUsername.docs.first.data()['email'] ?? '')
+              .toString()
+              .trim()
+              .toLowerCase();
+          if (email.isNotEmpty) return email;
+        }
 
-      // 3) Numeric/logical user_id lookup.
-      final byUserId = await FirebaseFirestore.instance
-          .collection(collection)
-          .where('user_id', isEqualTo: normalized)
-          .limit(1)
-          .get();
-      if (byUserId.docs.isNotEmpty) {
-        final email = (byUserId.docs.first.data()['email'] ?? '').toString().trim().toLowerCase();
-        if (email.isNotEmpty) return email;
-      }
+        // 3) Numeric/logical user_id lookup.
+        final byUserId = await FirebaseFirestore.instance
+            .collection(collection)
+            .where('user_id', isEqualTo: normalized)
+            .limit(1)
+            .get();
+        if (byUserId.docs.isNotEmpty) {
+          final email = (byUserId.docs.first.data()['email'] ?? '')
+              .toString()
+              .trim()
+              .toLowerCase();
+          if (email.isNotEmpty) return email;
+        }
 
-      // 4) Email lookup fallback (if input is already an email).
-      final byEmail = await FirebaseFirestore.instance
-          .collection(collection)
-          .where('email', isEqualTo: normalized)
-          .limit(1)
-          .get();
-      if (byEmail.docs.isNotEmpty) {
-        final email = (byEmail.docs.first.data()['email'] ?? '').toString().trim().toLowerCase();
-        if (email.isNotEmpty) return email;
+        // 4) Email lookup fallback (if input is already an email).
+        final byEmail = await FirebaseFirestore.instance
+            .collection(collection)
+            .where('email', isEqualTo: normalized)
+            .limit(1)
+            .get();
+        if (byEmail.docs.isNotEmpty) {
+          final email = (byEmail.docs.first.data()['email'] ?? '')
+              .toString()
+              .trim()
+              .toLowerCase();
+          if (email.isNotEmpty) return email;
+        }
+      } on FirebaseException catch (e) {
+        if (e.code != 'permission-denied') rethrow;
       }
     }
     return null;
