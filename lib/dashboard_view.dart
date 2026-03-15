@@ -448,6 +448,12 @@ class _DashboardOverviewState extends State<DashboardOverview> {
   }
 
   Widget _metricCard(BuildContext context, _MetricCardData card) {
+    final textTheme = Theme.of(context).textTheme;
+    final titleColor =
+        textTheme.titleMedium?.color ?? Theme.of(context).colorScheme.onSurface;
+    final subtitleColor = textTheme.bodySmall?.color ??
+        Theme.of(context).colorScheme.onSurfaceVariant;
+
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(
@@ -474,9 +480,7 @@ class _DashboardOverviewState extends State<DashboardOverview> {
                 children: [
                   Text(
                     card.title,
-                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                          color: const Color(0xFF455A64),
-                        ),
+                    style: textTheme.labelLarge?.copyWith(color: titleColor),
                   ),
                   Text(
                     card.value,
@@ -487,7 +491,7 @@ class _DashboardOverviewState extends State<DashboardOverview> {
                   Text(
                     card.subtitle,
                     overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodySmall,
+                    style: textTheme.bodySmall?.copyWith(color: subtitleColor),
                   ),
                 ],
               ),

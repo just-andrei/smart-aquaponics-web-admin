@@ -351,7 +351,16 @@ class _GrowerDetailsViewState extends State<GrowerDetailsView> {
 
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Provisioned "$systemName" (${doc.id}).')),
+      SnackBar(
+        content: Text(
+          'Provisioned "$systemName". Provision code: $provisionCode',
+        ),
+        duration: const Duration(seconds: 10),
+        action: SnackBarAction(
+          label: 'Close',
+          onPressed: () => ScaffoldMessenger.of(context).hideCurrentSnackBar(),
+        ),
+      ),
     );
   }
 

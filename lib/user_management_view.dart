@@ -1,4 +1,4 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; 
 import 'package:flutter/material.dart';
 
 import 'grower_details_view.dart';
@@ -362,6 +362,7 @@ class _UserManagementViewState extends State<UserManagementView> {
     }
     await batch.commit();
 
+    await userRef.delete();
     await UserAccountService.deleteUserAccount(uid: uid);
   }
 
@@ -372,15 +373,10 @@ class _UserManagementViewState extends State<UserManagementView> {
       builder: (dialogContext) {
         final confirmCtrl = TextEditingController();
         bool isDeleting = false;
-        String? errorText;
+        bool canDelete = false;
 
         return StatefulBuilder(
-          builder: (context, setState) {
-            final normalizedName = name.trim().toLowerCase();
-            final normalizedInput = confirmCtrl.text.trim().toLowerCase();
-            final canDelete = normalizedInput == 'delete' ||
-                (normalizedName.isNotEmpty && normalizedInput == normalizedName);
-
+          builder: (context, setDialogState) {
             return AlertDialog(
               title: const Text('Confirm Hard Delete'),
               content: Column(
@@ -388,17 +384,20 @@ class _UserManagementViewState extends State<UserManagementView> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    'Type the grower name or "DELETE" to confirm hard deletion.',
+                    'Type "Delete" to confirm hard deletion.',
                   ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: confirmCtrl,
-                    decoration: InputDecoration(
-                      labelText: 'Confirmation',
-                      border: const OutlineInputBorder(),
-                      errorText: errorText,
+                    decoration: const InputDecoration(
+                      labelText: "Type 'Delete' to confirm",
+                      border: OutlineInputBorder(),
                     ),
-                    onChanged: (_) => setState(() {}),
+                    onChanged: (value) {
+                      setDialogState(() {
+                        canDelete = value.trim().toLowerCase() == 'delete';
+                      });
+                    },
                     enabled: !isDeleting,
                   ),
                   if (isDeleting) ...[
@@ -419,27 +418,49 @@ class _UserManagementViewState extends State<UserManagementView> {
                   onPressed: !canDelete || isDeleting
                       ? null
                       : () async {
-                          setState(() {
+                          setDialogState(() {
                             isDeleting = true;
-                            errorText = null;
                           });
                           try {
-                            await _hardDeleteUser(
-                              uid: id,
-                              numericUserId: numericUserId,
-                            );
+                            final firestore = FirebaseFirestore.instance;
+                            final userRef = firestore.collection('user').doc(id);
+                            final systemsSnapshot =
+                                await userRef.collection('systems').get();
+
+                            for (final systemDoc in systemsSnapshot.docs) {
+                              final weeklySnapshot = await systemDoc.reference
+                                  .collection('weekly_logs')
+                                  .get();
+                              for (final weeklyDoc in weeklySnapshot.docs) {
+                                await weeklyDoc.reference.delete();
+                              }
+                              await systemDoc.reference.delete();
+                            }
+
+                            await userRef.delete();
                             if (!rootContext.mounted) return;
                             Navigator.pop(dialogContext);
                             widget.navigationProvider.setIndex(1);
                             ScaffoldMessenger.of(rootContext).showSnackBar(
-                              SnackBar(content: Text('Deleted "$name"')),
+                              const SnackBar(
+                                content: Text(
+                                  'Grower and associated systems deleted successfully',
+                                ),
+                              ),
                             );
                           } on Object catch (e) {
                             if (!rootContext.mounted) return;
-                            setState(() {
+                            setDialogState(() {
                               isDeleting = false;
-                              errorText = _firebaseErrorMessage(e);
                             });
+                            ScaffoldMessenger.of(rootContext).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  'Delete failed: ${_firebaseErrorMessage(e)}',
+                                ),
+                                duration: const Duration(seconds: 6),
+                              ),
+                            );
                           }
                         },
                   child: const Text('Delete'),
@@ -2305,6 +2326,8 @@ class _UserDialogState extends State<_UserDialog> {
   }
 
   Future<void> _save() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final nav = Navigator.of(context);
     if (!_formKey.currentState!.validate()) return;
     try {
       if (_isEditing) {
@@ -2340,20 +2363,19 @@ class _UserDialogState extends State<_UserDialog> {
           status: 'active',
         );
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Grower created. Temporary password: ${result.temporaryPassword}',
-            ),
-            duration: const Duration(seconds: 12),
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text('Grower Created'),
+            behavior: SnackBarBehavior.floating,
+            duration: Duration(seconds: 2),
           ),
         );
       }
 
-      if (mounted) Navigator.pop(context);
+      if (mounted) nav.pop();
     } on Object catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      messenger.showSnackBar(
         SnackBar(
           content: Text('Error saving user: ${_firebaseErrorMessage(e)}'),
         ),
