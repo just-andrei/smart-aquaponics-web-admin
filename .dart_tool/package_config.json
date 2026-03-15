@@ -50,6 +50,24 @@
       "languageVersion": "3.4"
     },
     {
+      "name": "cloud_functions",
+      "rootUri": "file:///C:/Users/Archie%20Pagsanjan/AppData/Local/Pub/Cache/hosted/pub.dev/cloud_functions-6.0.6",
+      "packageUri": "lib/",
+      "languageVersion": "3.2"
+    },
+    {
+      "name": "cloud_functions_platform_interface",
+      "rootUri": "file:///C:/Users/Archie%20Pagsanjan/AppData/Local/Pub/Cache/hosted/pub.dev/cloud_functions_platform_interface-5.8.9",
+      "packageUri": "lib/",
+      "languageVersion": "3.2"
+    },
+    {
+      "name": "cloud_functions_web",
+      "rootUri": "file:///C:/Users/Archie%20Pagsanjan/AppData/Local/Pub/Cache/hosted/pub.dev/cloud_functions_web-5.1.2",
+      "packageUri": "lib/",
+      "languageVersion": "3.4"
+    },
+    {
       "name": "collection",
       "rootUri": "file:///C:/Users/Archie%20Pagsanjan/AppData/Local/Pub/Cache/hosted/pub.dev/collection-1.19.1",
       "packageUri": "lib/",
@@ -138,6 +156,12 @@
       "rootUri": "file:///C:/Users/Archie%20Pagsanjan/AppData/Local/Pub/Cache/hosted/pub.dev/http_parser-4.1.2",
       "packageUri": "lib/",
       "languageVersion": "3.4"
+    },
+    {
+      "name": "intl",
+      "rootUri": "file:///C:/Users/Archie%20Pagsanjan/AppData/Local/Pub/Cache/hosted/pub.dev/intl-0.19.0",
+      "packageUri": "lib/",
+      "languageVersion": "3.0"
     },
     {
       "name": "leak_tracker",

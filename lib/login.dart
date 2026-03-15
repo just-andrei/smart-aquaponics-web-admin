@@ -12,7 +12,7 @@ class LoginPage extends StatefulWidget {
 
   const LoginPage({
     super.key,
-    this.themeMode = ThemeMode.light,
+    this.themeMode = ThemeMode.system,
     this.onThemeChanged = _noopThemeChanged,
   });
 
@@ -22,7 +22,7 @@ class LoginPage extends StatefulWidget {
   State<LoginPage> createState() => _LoginPageState();
 
   static Route createRoute({
-    ThemeMode themeMode = ThemeMode.light,
+    ThemeMode themeMode = ThemeMode.system,
     ValueChanged<ThemeMode> onThemeChanged = _noopThemeChanged,
   }) {
     return PageRouteBuilder(
@@ -309,19 +309,17 @@ class _LoginPageState extends State<LoginPage> {
     });
   }
 
-  Future<void> _handleBack() async {
-    final didPop = await Navigator.of(context).maybePop();
-    if (!didPop && mounted) {
-      Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
-    }
+  void _goToMain() {
+    if (!mounted) return;
+    Navigator.of(context).pushReplacementNamed('/landing');
   }
 
   Future<void> _onBackPressed() async {
     if (_isForgotPasswordMode) {
-      _exitForgotPasswordMode();
+      _goToMain();
       return;
     }
-    await _handleBack();
+    _goToMain();
   }
 
   @override
@@ -340,7 +338,7 @@ class _LoginPageState extends State<LoginPage> {
       canPop: !_isForgotPasswordMode,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop && _isForgotPasswordMode) {
-          _exitForgotPasswordMode();
+          _goToMain();
         }
       },
       child: Scaffold(
@@ -398,7 +396,7 @@ class _LoginPageState extends State<LoginPage> {
                         ),
                       ),
                       Text(
-                        "Login",
+                        "Aquaponics",
                         style: TextStyle(
                           fontSize: headerFontSize,
                           fontWeight: FontWeight.bold,
@@ -446,7 +444,7 @@ class _LoginPageState extends State<LoginPage> {
                                   Text(
                                     _isForgotPasswordMode
                                         ? "Reset Password"
-                                        : "Welcome Back",
+                                        : "Login",
                                     style: TextStyle(
                                       fontSize: titleFontSize,
                                       fontWeight: FontWeight.bold,
@@ -588,7 +586,7 @@ class _LoginPageState extends State<LoginPage> {
                                           tapTargetSize:
                                               MaterialTapTargetSize.shrinkWrap,
                                         ),
-                                        child: const Text('Reset password'),
+                                        child: const Text('Forget Password?'),
                                       ),
                                     ),
                                   ],
@@ -641,7 +639,7 @@ class _LoginPageState extends State<LoginPage> {
                                     TextButton(
                                       onPressed: _isLoading
                                           ? null
-                                          : _onBackPressed,
+                                          : _exitForgotPasswordMode,
                                       style: TextButton.styleFrom(
                                         foregroundColor: Colors.white70,
                                         textStyle: TextStyle(

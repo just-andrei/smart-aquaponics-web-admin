@@ -447,20 +447,21 @@ class _SupportTicketsViewState extends State<SupportTicketsView> {
   }
 
   Widget _searchField({required TextEditingController controller, required String label}) {
+    final scheme = Theme.of(context).colorScheme;
     return SizedBox(
       width: 300,
       child: TextField(
         controller: controller,
         decoration: InputDecoration(
           labelText: label,
-          prefixIcon: const Icon(Icons.search, color: _teal),
+          prefixIcon: Icon(Icons.search, color: scheme.primary),
           suffixIcon: IconButton(
             icon: const Icon(Icons.clear),
             onPressed: () => controller.clear(),
           ),
           border: const OutlineInputBorder(),
-          enabledBorder: const OutlineInputBorder(borderSide: BorderSide(color: _teal)),
-          focusedBorder: const OutlineInputBorder(borderSide: BorderSide(color: _teal, width: 2)),
+          enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: scheme.primary)),
+          focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: scheme.primary, width: 2)),
         ),
       ),
     );
@@ -485,67 +486,92 @@ class _SupportTicketsViewState extends State<SupportTicketsView> {
     final priorityBg = priority == 'Urgent' ? _teal.withValues(alpha: 0.16) : const Color(0xFFE0E0E0);
     final priorityTextColor = priority == 'Urgent' ? _teal : const Color(0xFF616161);
 
+    final scheme = Theme.of(context).colorScheme;
     return SizedBox(
       width: 420,
-      child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      _safeString(data['title']),
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(color: priorityBg, borderRadius: BorderRadius.circular(20)),
-                    child: Text(priority, style: TextStyle(color: priorityTextColor)),
-                  ),
-                  const SizedBox(width: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: _teal.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(status, style: const TextStyle(color: _teal)),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              _kv('Ticket ID', _safeString(data['ticket_id'])),
-              _kv('Category', _safeString(data['category'])),
-              _kv('Reported At', _formatDateTime(data['reported_at'])),
-              _kv('Reported By', reportedBy),
-              _kv('User ID', userId),
-              if (!showActions) _kv('Resolved At', _formatDateTime(data['resolved_at'])),
-              const SizedBox(height: 8),
-              Text(_safeString(data['description']), maxLines: 3, overflow: TextOverflow.ellipsis),
-              if (showActions) ...[
-                const SizedBox(height: 12),
+      child: Container(
+        decoration: BoxDecoration(
+          color: scheme.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: scheme.primary.withOpacity(0.5), width: 1.5),
+        ),
+        child: Card(
+          color: scheme.surface,
+          elevation: 0,
+          margin: EdgeInsets.zero,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    FilledButton(
-                      onPressed: onEdit,
-                      style: FilledButton.styleFrom(backgroundColor: _teal, foregroundColor: Colors.white),
-                      child: const Text('Edit'),
+                    Expanded(
+                      child: Text(
+                        _safeString(data['title']),
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                      ),
                     ),
-                    const SizedBox(width: 8),
-                    FilledButton(
-                      onPressed: onResolve,
-                      style: FilledButton.styleFrom(backgroundColor: _teal, foregroundColor: Colors.white),
-                      child: const Text('Resolved'),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: priorityBg,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(priority, style: TextStyle(color: priorityTextColor)),
+                    ),
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: _teal.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(status, style: const TextStyle(color: _teal)),
                     ),
                   ],
                 ),
+                const SizedBox(height: 10),
+                _kv('Ticket ID', _safeString(data['ticket_id'])),
+                _kv('Category', _safeString(data['category'])),
+                _kv('Reported At', _formatDateTime(data['reported_at'])),
+                _kv('Reported By', reportedBy),
+                _kv('User ID', userId),
+                if (!showActions) _kv('Resolved At', _formatDateTime(data['resolved_at'])),
+                const SizedBox(height: 8),
+                Text(_safeString(data['description']), maxLines: 3, overflow: TextOverflow.ellipsis),
+                if (showActions) ...[
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      FilledButton(
+                        onPressed: onEdit,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: _teal,
+                          foregroundColor: Colors.white,
+                        ),
+                        child: const Text('Edit'),
+                      ),
+                      const SizedBox(width: 8),
+                      FilledButton(
+                        onPressed: onResolve,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: _teal,
+                          foregroundColor: Colors.white,
+                        ),
+                        child: const Text('Resolved'),
+                      ),
+                    ],
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),
@@ -558,6 +584,7 @@ class _SupportTicketsViewState extends State<SupportTicketsView> {
     required List<String> items,
     required ValueChanged<String?> onChanged,
   }) {
+    final scheme = Theme.of(context).colorScheme;
     return SizedBox(
       width: 140,
       child: DropdownButtonFormField<String>(
@@ -567,8 +594,8 @@ class _SupportTicketsViewState extends State<SupportTicketsView> {
         decoration: InputDecoration(
           labelText: label,
           border: const OutlineInputBorder(),
-          enabledBorder: const OutlineInputBorder(borderSide: BorderSide(color: _teal)),
-          focusedBorder: const OutlineInputBorder(borderSide: BorderSide(color: _teal, width: 2)),
+          enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: scheme.primary)),
+          focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: scheme.primary, width: 2)),
           contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
         ),
       ),

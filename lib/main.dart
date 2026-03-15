@@ -16,7 +16,7 @@ class AquaponicsApp extends StatefulWidget {
 }
 
 class _AquaponicsAppState extends State<AquaponicsApp> {
-  ThemeMode _themeMode = ThemeMode.light;
+  ThemeMode _themeMode = ThemeMode.system;
 
   void _handleThemeChanged(ThemeMode mode) {
     setState(() {
@@ -28,7 +28,7 @@ class _AquaponicsAppState extends State<AquaponicsApp> {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'LYTRA',
+      title: 'Aquaponics',
       themeMode: _themeMode,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF0F6D6A)),
@@ -46,6 +46,29 @@ class _AquaponicsAppState extends State<AquaponicsApp> {
         themeMode: _themeMode,
         onThemeChanged: _handleThemeChanged,
       ),
+      onGenerateRoute: (settings) {
+        if (settings.name == '/' || settings.name == '/landing') {
+          return PageRouteBuilder(
+            transitionDuration: const Duration(milliseconds: 300),
+            pageBuilder: (context, animation, secondaryAnimation) =>
+                LandingPage(
+                  themeMode: _themeMode,
+                  onThemeChanged: _handleThemeChanged,
+                ),
+            transitionsBuilder:
+                (context, animation, secondaryAnimation, child) {
+              return FadeTransition(
+                opacity: CurvedAnimation(
+                  parent: animation,
+                  curve: Curves.easeInOut,
+                ),
+                child: child,
+              );
+            },
+          );
+        }
+        return null;
+      },
     );
   }
 }
@@ -318,13 +341,8 @@ class _LandingPageState extends State<LandingPage> {
                       children: [
                         Row(
                           children: [
-                            Image.asset(
-                              'image/logo.png',
-                              height: (36 * scale).clamp(24.0, 36.0),
-                            ),
-                            const SizedBox(width: 10),
                             Text(
-                              'LYTRA',
+                              'Aquaponics',
                               style: TextStyle(
                                 fontSize: brandFontSize,
                                 fontWeight: FontWeight.bold,
@@ -376,7 +394,53 @@ class _LandingPageState extends State<LandingPage> {
   }) {
     return Container(
       width: double.infinity,
-      color: const Color(0xFFEAF1F6),
+      color: const Color(0xFFEAF1F6)
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      ,
       padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 60),
       child: Center(
         child: ConstrainedBox(

@@ -1,0 +1,67 @@
+Flutter crash report.
+Please report a bug at https://github.com/flutter/flutter/issues.
+
+## command
+
+flutter analyze
+
+## exception
+
+_Exception: Exception: analysis server exited with code -1073740791 and output:
+[stderr] ../../runtime/vm/heap/pages.cc: 1524: error: Out of memory.
+[stderr] version=3.11.0 (stable) (Mon Feb 9 00:38:07 2026 -0800) on "windows_x64"
+[stderr] pid=21780, thread=904, isolate_group=main(000001D32E722B40), isolate=main(000001D32E729C80)
+[stderr] os=windows, arch=x64, comp=no, sim=no
+[stderr] isolate_instructions=1d331de0000, vm_instructions=7ff666e88400
+[stderr] fp=b637b0e8e0, sp=b637b0e898, pc=7ff66716cca3
+[stderr] ../../runtime/vm/os_thread.cc: 364: error: Could not start thread DartWorker: 22 (The device does not recognize the command.
+[stderr] 
+[stderr] )
+[stderr] Aborting reentrant request for stack trace.
+
+```
+```
+
+## flutter doctor
+
+```
+[✓] Flutter (Channel stable, 3.41.2, on Microsoft Windows [Version 10.0.19045.6466], locale en-US) [1,894ms]
+    • Flutter version 3.41.2 on channel stable at C:\flutter\flutter
+    • Upstream repository https://github.com/flutter/flutter.git
+    • Framework revision 90673a4eef (2 weeks ago), 2026-02-18 13:54:59 -0800
+    • Engine revision 6c0baaebf7
+    • Dart version 3.11.0
+    • DevTools version 2.54.1
+    • Feature flags: enable-web, enable-linux-desktop, enable-macos-desktop, enable-windows-desktop, enable-android, enable-ios, cli-animations, enable-native-assets, omit-legacy-version-file, enable-lldb-debugging, enable-uiscene-migration
+
+[✓] Windows Version (10 Pro 64-bit, 22H2, 2009) [38.7s]
+
+[!] Android toolchain - develop for Android devices (Android SDK version 36.1.0) [2.5s]
+    • Android SDK at C:\Android\Sdk
+    • Emulator version 36.4.9.0 (build_id 14788078) (CL:N/A)
+    • Platform android-36, build-tools 36.1.0
+    • ANDROID_HOME = C:\Android\Sdk
+    • Java binary at: C:\Program Files\Java\jdk-24\bin\java
+      This JDK is specified by the JAVA_HOME environment variable.
+      To manually set the JDK path, use: `flutter config --jdk-dir="path/to/jdk"`.
+    ✗ Cannot execute C:\Program Files\Java\jdk-24\bin\java to determine the version
+
+[✓] Chrome - develop for the web [324ms]
+    • Chrome at C:\Program Files\Google\Chrome\Application\chrome.exe
+
+[✓] Visual Studio - develop Windows apps (Visual Studio Community 2022 17.11.5) [321ms]
+    • Visual Studio at C:\Program Files\Microsoft Visual Studio\2022\Community
+    • Visual Studio Community 2022 version 17.11.35327.3
+    • Windows 10 SDK version 10.0.22621.0
+
+[✓] Connected device (4 available) [2.2s]
+    • RMX3630 (mobile)  • FA7HXWDEVKXS7DJN • android-arm64  • Android 14 (API 34)
+    • Windows (desktop) • windows          • windows-x64    • Microsoft Windows [Version 10.0.19045.6466]
+    • Chrome (web)      • chrome           • web-javascript • Google Chrome 145.0.7632.159
+    • Edge (web)        • edge             • web-javascript • Microsoft Edge 145.0.3800.65
+
+[✓] Network resources [1,090ms]
+    • All expected network resources are available.
+
+! Doctor found issues in 1 category.
+```

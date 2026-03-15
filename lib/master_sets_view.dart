@@ -79,6 +79,91 @@ Map<String, Map<String, int>> _toPlantOverrides(dynamic value) {
   return overrides;
 }
 
+Future<void> syncCompatibility(String fishId, List<String> newPlantIds) async {
+  final cleanedFishId = fishId.trim();
+  if (cleanedFishId.isEmpty) return;
+
+  final firestore = FirebaseFirestore.instance;
+  final fishSnapshot = await firestore
+      .collection('aquaculture')
+      .where('fish_id', isEqualTo: cleanedFishId)
+      .limit(1)
+      .get();
+
+  if (fishSnapshot.docs.isEmpty) {
+    throw StateError('Aquaculture record not found for fish_id: $cleanedFishId');
+  }
+
+  final fishData = fishSnapshot.docs.first.data();
+  final previousOverrides = _toPlantOverrides(fishData['compatible_plants']);
+  final previousPlantIds = previousOverrides.keys
+      .map((id) => id.trim())
+      .where((id) => id.isNotEmpty)
+      .toSet();
+
+  final nextPlantIds = newPlantIds
+      .map((id) => id.trim())
+      .where((id) => id.isNotEmpty)
+      .toSet();
+
+  final toAdd = nextPlantIds.difference(previousPlantIds);
+  final toRemove = previousPlantIds.difference(nextPlantIds);
+
+  if (toAdd.isEmpty && toRemove.isEmpty) return;
+
+  final batch = firestore.batch();
+  var hasUpdates = false;
+  final missingPlantIds = <String>[];
+
+  Future<DocumentReference<Map<String, dynamic>>?> plantRefForId(
+    String plantId,
+  ) async {
+    final snapshot = await firestore
+        .collection('plants')
+        .where('plant_id', isEqualTo: plantId)
+        .limit(1)
+        .get();
+    if (snapshot.docs.isEmpty) return null;
+    return snapshot.docs.first.reference;
+  }
+
+  for (final plantId in toAdd) {
+    final plantRef = await plantRefForId(plantId);
+    if (plantRef == null) {
+      missingPlantIds.add(plantId);
+      continue;
+    }
+    batch.update(plantRef, {
+      'compatible_fish': FieldValue.arrayUnion([cleanedFishId]),
+      'updated_at': FieldValue.serverTimestamp(),
+    });
+    hasUpdates = true;
+  }
+
+  for (final plantId in toRemove) {
+    final plantRef = await plantRefForId(plantId);
+    if (plantRef == null) {
+      missingPlantIds.add(plantId);
+      continue;
+    }
+    batch.update(plantRef, {
+      'compatible_fish': FieldValue.arrayRemove([cleanedFishId]),
+      'updated_at': FieldValue.serverTimestamp(),
+    });
+    hasUpdates = true;
+  }
+
+  if (hasUpdates) {
+    await batch.commit();
+  }
+
+  if (missingPlantIds.isNotEmpty) {
+    throw StateError(
+      'Missing plant records for ids: ${missingPlantIds.join(', ')}',
+    );
+  }
+}
+
 String _timestampText(dynamic value) {
   if (value is Timestamp) return value.toDate().toString();
   return value?.toString() ?? '';
@@ -94,15 +179,51 @@ String _formatFeedingTime(TimeOfDay time) {
 Widget _viewRow(String label, String value) {
   return Padding(
     padding: const EdgeInsets.only(bottom: 8),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 150,
-          child: Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
-        ),
-        Expanded(child: Text(value.isEmpty ? 'N/A' : value)),
-      ],
+    child: LayoutBuilder(
+      builder: (context, constraints) {
+        final scheme = Theme.of(context).colorScheme;
+        final compact = constraints.maxWidth < 420;
+        if (compact) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value.isEmpty ? 'N/A' : value,
+                style: TextStyle(color: scheme.onSurface),
+              ),
+            ],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 150,
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+            Expanded(
+              child: Text(
+                value.isEmpty ? 'N/A' : value,
+                style: TextStyle(color: scheme.onSurface),
+              ),
+            ),
+          ],
+        );
+      },
     ),
   );
 }
@@ -235,20 +356,14 @@ Future<void> _showEditAquacultureDialog(
   DocumentSnapshot doc,
 ) async {
   final data = (doc.data() as Map<String, dynamic>? ?? <String, dynamic>{});
-  final currentFishCustomId = _valueText(data['fish_id']).trim().isNotEmpty
-      ? _valueText(data['fish_id']).trim()
-      : _valueText(data['aquaculture_id']).trim().isNotEmpty
-          ? _valueText(data['aquaculture_id']).trim()
-          : doc.id;
+  final fishIdForSync = _valueText(data['fish_id']).trim();
   final plantsSnap = await FirebaseFirestore.instance.collection('plants').get();
-  final plantCustomIdToDocId = <String, String>{};
   final plantOptions = plantsSnap.docs
       .map((item) {
         final plantData = item.data();
         final customId = _valueText(plantData['plant_id']).trim().isEmpty
             ? item.id
             : _valueText(plantData['plant_id']).trim();
-        plantCustomIdToDocId[customId] = item.id;
         return _EntityOption(
           id: customId,
           name: (plantData['name'] ?? customId).toString(),
@@ -373,6 +488,18 @@ Future<void> _showEditAquacultureDialog(
     navigator.pop();
 
     try {
+      var syncFailed = false;
+      if (fishIdForSync.isNotEmpty) {
+        try {
+          await syncCompatibility(
+            fishIdForSync,
+            selectedCompatiblePlants.toList(),
+          );
+        } catch (_) {
+          syncFailed = true;
+        }
+      }
+
       final aquacultureRef =
           FirebaseFirestore.instance.collection('aquaculture').doc(doc.id);
       await aquacultureRef.update({
@@ -404,33 +531,19 @@ Future<void> _showEditAquacultureDialog(
         }).toList(),
         'updated_at': FieldValue.serverTimestamp(),
       });
-
-      final toAdd = selectedCompatiblePlants.difference(originalCompatiblePlants);
-      final toRemove = originalCompatiblePlants.difference(selectedCompatiblePlants);
-
-      if (toAdd.isNotEmpty) {
-        for (final customId in toAdd) {
-          final plantDocId = plantCustomIdToDocId[customId] ?? customId;
-          await FirebaseFirestore.instance.collection('plants').doc(plantDocId).update({
-            'compatible_fish': FieldValue.arrayUnion([currentFishCustomId]),
-            'updated_at': FieldValue.serverTimestamp(),
-          });
-        }
+      if (syncFailed) {
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Warning: Bidirectional sync failed for some plants',
+            ),
+          ),
+        );
+      } else {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Aquaculture updated successfully')),
+        );
       }
-
-      if (toRemove.isNotEmpty) {
-        for (final customId in toRemove) {
-          final plantDocId = plantCustomIdToDocId[customId] ?? customId;
-          await FirebaseFirestore.instance.collection('plants').doc(plantDocId).update({
-            'compatible_fish': FieldValue.arrayRemove([currentFishCustomId]),
-            'updated_at': FieldValue.serverTimestamp(),
-          });
-        }
-      }
-
-      messenger.showSnackBar(
-        const SnackBar(content: Text('Aquaculture updated successfully')),
-      );
     } on Object catch (e) {
       messenger.showSnackBar(
         SnackBar(
@@ -637,7 +750,11 @@ Future<void> _showEditAquacultureDialog(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: const Color(0xFFE5E7EB)),
+                          border: Border.all(
+                            color: Theme.of(dialogContext)
+                                .colorScheme
+                                .outlineVariant,
+                          ),
                         ),
                         child: plantOptions.isEmpty
                             ? const Align(
@@ -675,64 +792,98 @@ Future<void> _showEditAquacultureDialog(
                                           });
                                         },
                                       ),
-                                      if (checked)
+                                  if (checked)
                                         Padding(
                                           padding: const EdgeInsets.only(
                                             left: 12,
                                             right: 12,
                                             bottom: 8,
                                           ),
-                                          child: Row(
-                                            children: [
-                                              Expanded(
-                                                child: TextFormField(
-                                                  initialValue:
-                                                      '${plantOverrides[customId]?['ideal_days'] ?? 0}',
-                                                  keyboardType: TextInputType.number,
-                                                  decoration: const InputDecoration(
-                                                    labelText:
-                                                        'Ideal Days to Harvest (for this fish)',
-                                                    border: OutlineInputBorder(),
-                                                    isDense: true,
-                                                  ),
-                                                  onChanged: (value) {
-                                                    plantOverrides.putIfAbsent(
-                                                      customId,
-                                                      () => <String, int>{
-                                                        'ideal_days': 0,
-                                                        'batches': 0,
+                                          child: LayoutBuilder(
+                                            builder: (context, constraints) {
+                                              final isNarrow =
+                                                  constraints.maxWidth < 620;
+                                              final fieldWidth = isNarrow
+                                                  ? constraints.maxWidth
+                                                  : (constraints.maxWidth - 8) /
+                                                      2;
+                                              return Wrap(
+                                                spacing: 8,
+                                                runSpacing: 8,
+                                                children: [
+                                                  SizedBox(
+                                                    width: fieldWidth,
+                                                    child: TextFormField(
+                                                      initialValue:
+                                                          '${plantOverrides[customId]?['ideal_days'] ?? 0}',
+                                                      keyboardType:
+                                                          TextInputType.number,
+                                                      decoration:
+                                                          const InputDecoration(
+                                                            labelText:
+                                                                'Ideal Days to Harvest (for this fish)',
+                                                            border:
+                                                                OutlineInputBorder(),
+                                                            isDense: true,
+                                                          ),
+                                                      onChanged: (value) {
+                                                        plantOverrides
+                                                            .putIfAbsent(
+                                                          customId,
+                                                          () =>
+                                                              <String, int>{
+                                                                'ideal_days':
+                                                                    0,
+                                                                'batches': 0,
+                                                              },
+                                                        );
+                                                        plantOverrides[customId]![
+                                                                'ideal_days'] =
+                                                            int.tryParse(
+                                                                  value.trim(),
+                                                                ) ??
+                                                                0;
                                                       },
-                                                    );
-                                                    plantOverrides[customId]!['ideal_days'] =
-                                                        int.tryParse(value.trim()) ?? 0;
-                                                  },
-                                                ),
-                                              ),
-                                              const SizedBox(width: 8),
-                                              Expanded(
-                                                child: TextFormField(
-                                                  initialValue:
-                                                      '${plantOverrides[customId]?['batches'] ?? 0}',
-                                                  keyboardType: TextInputType.number,
-                                                  decoration: const InputDecoration(
-                                                    labelText: 'Number of Batches',
-                                                    border: OutlineInputBorder(),
-                                                    isDense: true,
+                                                    ),
                                                   ),
-                                                  onChanged: (value) {
-                                                    plantOverrides.putIfAbsent(
-                                                      customId,
-                                                      () => <String, int>{
-                                                        'ideal_days': 0,
-                                                        'batches': 0,
+                                                  SizedBox(
+                                                    width: fieldWidth,
+                                                    child: TextFormField(
+                                                      initialValue:
+                                                          '${plantOverrides[customId]?['batches'] ?? 0}',
+                                                      keyboardType:
+                                                          TextInputType.number,
+                                                      decoration:
+                                                          const InputDecoration(
+                                                            labelText:
+                                                                'Number of Batches',
+                                                            border:
+                                                                OutlineInputBorder(),
+                                                            isDense: true,
+                                                          ),
+                                                      onChanged: (value) {
+                                                        plantOverrides
+                                                            .putIfAbsent(
+                                                          customId,
+                                                          () =>
+                                                              <String, int>{
+                                                                'ideal_days':
+                                                                    0,
+                                                                'batches': 0,
+                                                              },
+                                                        );
+                                                        plantOverrides[customId]![
+                                                                'batches'] =
+                                                            int.tryParse(
+                                                                  value.trim(),
+                                                                ) ??
+                                                                0;
                                                       },
-                                                    );
-                                                    plantOverrides[customId]!['batches'] =
-                                                        int.tryParse(value.trim()) ?? 0;
-                                                  },
-                                                ),
-                                              ),
-                                            ],
+                                                    ),
+                                                  ),
+                                                ],
+                                              );
+                                            },
                                           ),
                                         ),
                                     ],
@@ -1001,34 +1152,6 @@ Future<void> _showEditPlantDialog(
                       const Align(
                         alignment: Alignment.centerLeft,
                         child: Text(
-                          'Growth Parameters',
-                          style: TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      TextFormField(
-                        controller: idealDaysToHarvestCtrl,
-                        keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(
-                          labelText: 'Ideal Days to Harvest',
-                          border: OutlineInputBorder(),
-                        ),
-                        validator: optionalInt,
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: numberOfBatchesCtrl,
-                        keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(
-                          labelText: 'Number of Batches',
-                          border: OutlineInputBorder(),
-                        ),
-                        validator: optionalInt,
-                      ),
-                      const SizedBox(height: 12),
-                      const Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
                           'Compatible Fish',
                           style: TextStyle(fontWeight: FontWeight.w700),
                         ),
@@ -1039,7 +1162,11 @@ Future<void> _showEditPlantDialog(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: const Color(0xFFE5E7EB)),
+                          border: Border.all(
+                            color: Theme.of(dialogContext)
+                                .colorScheme
+                                .outlineVariant,
+                          ),
                         ),
                         child: fishOptions.isEmpty
                             ? const Align(
@@ -1108,8 +1235,10 @@ class MasterSetsView extends StatefulWidget {
 }
 
 class _MasterSetsViewState extends State<MasterSetsView> {
-  bool get _canManageMasterSets =>
-      widget.userRole.trim().toLowerCase() == 'admin';
+  bool get _canManageMasterSets {
+    final role = widget.userRole.trim().toLowerCase();
+    return role == 'admin';
+  }
 
   void _showAddFishDialog() {
     if (!_canManageMasterSets) return;
@@ -1269,6 +1398,7 @@ class _AquacultureTab extends StatelessWidget {
                         .toList();
 
                     return _HorizontalAquacultureCard(
+                      canManage: canManage,
                       doc: doc,
                       name: (data['name'] ?? 'Unnamed Fish').toString(),
                       type: (data['type'] ?? 'N/A').toString(),
@@ -1338,6 +1468,7 @@ class _PlantsTab extends StatelessWidget {
                         .toList();
 
                     return _HorizontalPlantCard(
+                      canManage: canManage,
                       doc: doc,
                       name: (data['name'] ?? 'Unnamed Plant').toString(),
                       type: (data['type'] ?? 'N/A').toString(),
@@ -1354,6 +1485,7 @@ class _PlantsTab extends StatelessWidget {
 
 class _HorizontalAquacultureCard extends StatelessWidget {
   const _HorizontalAquacultureCard({
+    required this.canManage,
     required this.doc,
     required this.name,
     required this.type,
@@ -1367,6 +1499,7 @@ class _HorizontalAquacultureCard extends StatelessWidget {
     required this.ammoniaRange,
   });
 
+  final bool canManage;
   final DocumentSnapshot doc;
   final String name;
   final String type;
@@ -1382,62 +1515,35 @@ class _HorizontalAquacultureCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isCompact = MediaQuery.of(context).size.width < 980;
+    final scheme = Theme.of(context).colorScheme;
     return Card(
-      color: Colors.white,
+      color: scheme.surface,
       elevation: 1.2,
-      shadowColor: Colors.black12,
+      shadowColor: scheme.shadow,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: const BorderSide(color: Color(0xFFE7E7E7)),
       ),
       margin: const EdgeInsets.only(bottom: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: isCompact
-            ? Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _DetailsSection(
-                    name: name,
-                    type: type,
-                    description: description,
-                    compatibilityLabel: 'Compatible Plants',
-                    compatibilityItems: compatiblePlants,
-                  ),
-                  const SizedBox(height: 12),
-                  _ParameterSection(
-                    tempRange: tempRange,
-                    phRange: phRange,
-                    doRange: doRange,
-                    salinityRange: salinityRange,
-                    turbidityRange: turbidityRange,
-                    ammoniaRange: ammoniaRange,
-                  ),
-                  const SizedBox(height: 12),
-                  _ActionSection(
-                    viewLabel: 'View Aquaculture',
-                    onView: () => _showViewAquacultureDialog(context, doc),
-                    onEdit: () => _showEditAquacultureDialog(context, doc),
-                  ),
-                ],
-              )
-            : Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    flex: 4,
-                    child: _DetailsSection(
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: scheme.primary, width: 1),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: isCompact
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _DetailsSection(
                       name: name,
                       type: type,
                       description: description,
                       compatibilityLabel: 'Compatible Plants',
                       compatibilityItems: compatiblePlants,
                     ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    flex: 3,
-                    child: _ParameterSection(
+                    const SizedBox(height: 12),
+                    _ParameterSection(
                       tempRange: tempRange,
                       phRange: phRange,
                       doRange: doRange,
@@ -1445,18 +1551,55 @@ class _HorizontalAquacultureCard extends StatelessWidget {
                       turbidityRange: turbidityRange,
                       ammoniaRange: ammoniaRange,
                     ),
-                  ),
-                  const SizedBox(width: 16),
-                  SizedBox(
-                    width: 170,
-                    child: _ActionSection(
+                    const SizedBox(height: 12),
+                    _ActionSection(
                       viewLabel: 'View Aquaculture',
                       onView: () => _showViewAquacultureDialog(context, doc),
-                      onEdit: () => _showEditAquacultureDialog(context, doc),
+                      onEdit: canManage
+                          ? () => _showEditAquacultureDialog(context, doc)
+                          : null,
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                )
+              : Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      flex: 4,
+                      child: _DetailsSection(
+                        name: name,
+                        type: type,
+                        description: description,
+                        compatibilityLabel: 'Compatible Plants',
+                        compatibilityItems: compatiblePlants,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      flex: 3,
+                      child: _ParameterSection(
+                        tempRange: tempRange,
+                        phRange: phRange,
+                        doRange: doRange,
+                        salinityRange: salinityRange,
+                        turbidityRange: turbidityRange,
+                        ammoniaRange: ammoniaRange,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    SizedBox(
+                      width: 170,
+                      child: _ActionSection(
+                        viewLabel: 'View Aquaculture',
+                        onView: () => _showViewAquacultureDialog(context, doc),
+                        onEdit: canManage
+                            ? () => _showEditAquacultureDialog(context, doc)
+                            : null,
+                      ),
+                    ),
+                  ],
+                ),
+        ),
       ),
     );
   }
@@ -1464,6 +1607,7 @@ class _HorizontalAquacultureCard extends StatelessWidget {
 
 class _HorizontalPlantCard extends StatelessWidget {
   const _HorizontalPlantCard({
+    required this.canManage,
     required this.doc,
     required this.name,
     required this.type,
@@ -1471,6 +1615,7 @@ class _HorizontalPlantCard extends StatelessWidget {
     required this.compatibleFish,
   });
 
+  final bool canManage;
   final DocumentSnapshot doc;
   final String name;
   final String type;
@@ -1480,59 +1625,69 @@ class _HorizontalPlantCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isCompact = MediaQuery.of(context).size.width < 820;
+    final scheme = Theme.of(context).colorScheme;
     return Card(
-      color: Colors.white,
+      color: scheme.surface,
       elevation: 1.2,
-      shadowColor: Colors.black12,
+      shadowColor: scheme.shadow,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: const BorderSide(color: Color(0xFFE7E7E7)),
       ),
       margin: const EdgeInsets.only(bottom: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: isCompact
-            ? Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _DetailsSection(
-                    name: name,
-                    type: type,
-                    description: description,
-                    compatibilityLabel: 'Compatible Fish',
-                    compatibilityItems: compatibleFish,
-                  ),
-                  const SizedBox(height: 12),
-                  _ActionSection(
-                    viewLabel: 'View Plant',
-                    onView: () => _showViewPlantDialog(context, doc),
-                    onEdit: () => _showEditPlantDialog(context, doc),
-                  ),
-                ],
-              )
-            : Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: _DetailsSection(
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: scheme.primary, width: 1),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: isCompact
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _DetailsSection(
                       name: name,
                       type: type,
                       description: description,
                       compatibilityLabel: 'Compatible Fish',
                       compatibilityItems: compatibleFish,
                     ),
-                  ),
-                  const SizedBox(width: 16),
-                  SizedBox(
-                    width: 170,
-                    child: _ActionSection(
+                    const SizedBox(height: 12),
+                    _ActionSection(
                       viewLabel: 'View Plant',
                       onView: () => _showViewPlantDialog(context, doc),
-                      onEdit: () => _showEditPlantDialog(context, doc),
+                      onEdit: canManage
+                          ? () => _showEditPlantDialog(context, doc)
+                          : null,
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                )
+              : Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: _DetailsSection(
+                        name: name,
+                        type: type,
+                        description: description,
+                        compatibilityLabel: 'Compatible Fish',
+                        compatibilityItems: compatibleFish,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    SizedBox(
+                      width: 170,
+                      child: _ActionSection(
+                        viewLabel: 'View Plant',
+                        onView: () => _showViewPlantDialog(context, doc),
+                        onEdit: canManage
+                            ? () => _showEditPlantDialog(context, doc)
+                            : null,
+                      ),
+                    ),
+                  ],
+                ),
+        ),
       ),
     );
   }
@@ -1555,6 +1710,7 @@ class _DetailsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1564,33 +1720,50 @@ class _DetailsSection extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
           style: Theme.of(context).textTheme.titleLarge?.copyWith(
                 fontWeight: FontWeight.w700,
-                color: Colors.black87,
+                color: scheme.onSurface,
               ),
         ),
         const SizedBox(height: 2),
         Text(
           type,
-          style: const TextStyle(color: Colors.black54, fontSize: 13),
+          style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13),
         ),
         const SizedBox(height: 8),
         Text(
           description,
           maxLines: 3,
           overflow: TextOverflow.ellipsis,
-          style: const TextStyle(color: Colors.black54),
+          style: TextStyle(color: scheme.onSurfaceVariant),
         ),
         const SizedBox(height: 10),
         Text(
           compatibilityLabel,
-          style: const TextStyle(fontWeight: FontWeight.w700, color: Colors.black87),
+          style: TextStyle(
+            fontWeight: FontWeight.w700,
+            color: scheme.onSurface,
+          ),
         ),
         const SizedBox(height: 8),
         Wrap(
           spacing: 8,
           runSpacing: 8,
           children: compatibilityItems.isEmpty
-              ? const [Chip(label: Text('None'))]
-              : compatibilityItems.map((item) => Chip(label: Text(item))).toList(),
+              ? [
+                  Chip(
+                    label: const Text('None'),
+                    backgroundColor: scheme.surfaceVariant,
+                    labelStyle: TextStyle(color: scheme.onSurface),
+                  ),
+                ]
+              : compatibilityItems
+                  .map(
+                    (item) => Chip(
+                      label: Text(item),
+                      backgroundColor: scheme.surfaceVariant,
+                      labelStyle: TextStyle(color: scheme.onSurface),
+                    ),
+                  )
+                  .toList(),
         ),
       ],
     );
@@ -1639,18 +1812,19 @@ class _ParameterItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Container(
       constraints: const BoxConstraints(minWidth: 140),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: const Color(0xFFF9FAFB),
+        color: scheme.surfaceVariant,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        border: Border.all(color: scheme.outlineVariant),
       ),
       child: Text(
         '$label: $value',
-        style: const TextStyle(
-          color: Colors.black87,
+        style: TextStyle(
+          color: scheme.onSurface,
           fontWeight: FontWeight.w600,
           fontSize: 12,
         ),
@@ -1668,7 +1842,7 @@ class _ActionSection extends StatelessWidget {
 
   final String viewLabel;
   final VoidCallback onView;
-  final VoidCallback onEdit;
+  final VoidCallback? onEdit;
 
   @override
   Widget build(BuildContext context) {
@@ -1679,12 +1853,14 @@ class _ActionSection extends StatelessWidget {
           onPressed: onView,
           child: Text(viewLabel),
         ),
-        const SizedBox(height: 8),
-        ElevatedButton.icon(
-          onPressed: onEdit,
-          icon: const Icon(Icons.edit_outlined, size: 16),
-          label: const Text('Edit'),
-        ),
+        if (onEdit != null) ...[
+          const SizedBox(height: 8),
+          ElevatedButton.icon(
+            onPressed: onEdit,
+            icon: const Icon(Icons.edit_outlined, size: 16),
+            label: const Text('Edit'),
+          ),
+        ],
       ],
     );
   }
@@ -1713,11 +1889,24 @@ class _EmptyCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Card(
-      color: Colors.white,
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Text(message),
+      color: scheme.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: scheme.primary, width: 1),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Text(
+            message,
+            style: TextStyle(color: scheme.onSurface),
+          ),
+        ),
       ),
     );
   }
@@ -2125,7 +2314,9 @@ class _AddFishDialogState extends State<_AddFishDialog> {
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: const Color(0xFFE5E7EB)),
+                      border: Border.all(
+                        color: Theme.of(context).colorScheme.outlineVariant,
+                      ),
                     ),
                     child: _plantOptions.isEmpty
                         ? const Align(
@@ -2168,57 +2359,84 @@ class _AddFishDialogState extends State<_AddFishDialog> {
                                         right: 12,
                                         bottom: 8,
                                       ),
-                                      child: Row(
-                                        children: [
-                                          Expanded(
-                                            child: TextFormField(
-                                              initialValue:
-                                                  '${_plantOverrides[customId]?['ideal_days'] ?? 0}',
-                                              keyboardType: TextInputType.number,
-                                              decoration: const InputDecoration(
-                                                labelText:
-                                                    'Ideal Days to Harvest (for this fish)',
-                                                border: OutlineInputBorder(),
-                                                isDense: true,
-                                              ),
-                                              onChanged: (value) {
-                                                _plantOverrides.putIfAbsent(
-                                                  customId,
-                                                  () => <String, int>{
-                                                    'ideal_days': 0,
-                                                    'batches': 0,
+                                      child: LayoutBuilder(
+                                        builder: (context, constraints) {
+                                          final isNarrow =
+                                              constraints.maxWidth < 620;
+                                          final fieldWidth = isNarrow
+                                              ? constraints.maxWidth
+                                              : (constraints.maxWidth - 8) / 2;
+                                          return Wrap(
+                                            spacing: 8,
+                                            runSpacing: 8,
+                                            children: [
+                                              SizedBox(
+                                                width: fieldWidth,
+                                                child: TextFormField(
+                                                  initialValue:
+                                                      '${_plantOverrides[customId]?['ideal_days'] ?? 0}',
+                                                  keyboardType:
+                                                      TextInputType.number,
+                                                  decoration:
+                                                      const InputDecoration(
+                                                        labelText:
+                                                            'Ideal Days to Harvest (for this fish)',
+                                                        border:
+                                                            OutlineInputBorder(),
+                                                        isDense: true,
+                                                      ),
+                                                  onChanged: (value) {
+                                                    _plantOverrides.putIfAbsent(
+                                                      customId,
+                                                      () => <String, int>{
+                                                        'ideal_days': 0,
+                                                        'batches': 0,
+                                                      },
+                                                    );
+                                                    _plantOverrides[customId]![
+                                                            'ideal_days'] =
+                                                        int.tryParse(
+                                                              value.trim(),
+                                                            ) ??
+                                                            0;
                                                   },
-                                                );
-                                                _plantOverrides[customId]!['ideal_days'] =
-                                                    int.tryParse(value.trim()) ?? 0;
-                                              },
-                                            ),
-                                          ),
-                                          const SizedBox(width: 8),
-                                          Expanded(
-                                            child: TextFormField(
-                                              initialValue:
-                                                  '${_plantOverrides[customId]?['batches'] ?? 0}',
-                                              keyboardType: TextInputType.number,
-                                              decoration: const InputDecoration(
-                                                labelText: 'Number of Batches',
-                                                border: OutlineInputBorder(),
-                                                isDense: true,
+                                                ),
                                               ),
-                                              onChanged: (value) {
-                                                _plantOverrides.putIfAbsent(
-                                                  customId,
-                                                  () => <String, int>{
-                                                    'ideal_days': 0,
-                                                    'batches': 0,
+                                              SizedBox(
+                                                width: fieldWidth,
+                                                child: TextFormField(
+                                                  initialValue:
+                                                      '${_plantOverrides[customId]?['batches'] ?? 0}',
+                                                  keyboardType:
+                                                      TextInputType.number,
+                                                  decoration:
+                                                      const InputDecoration(
+                                                        labelText:
+                                                            'Number of Batches',
+                                                        border:
+                                                            OutlineInputBorder(),
+                                                        isDense: true,
+                                                      ),
+                                                  onChanged: (value) {
+                                                    _plantOverrides.putIfAbsent(
+                                                      customId,
+                                                      () => <String, int>{
+                                                        'ideal_days': 0,
+                                                        'batches': 0,
+                                                      },
+                                                    );
+                                                    _plantOverrides[customId]![
+                                                            'batches'] =
+                                                        int.tryParse(
+                                                              value.trim(),
+                                                            ) ??
+                                                            0;
                                                   },
-                                                );
-                                                _plantOverrides[customId]!['batches'] =
-                                                    int.tryParse(value.trim()) ?? 0;
-                                              },
-                                            ),
-                                          ),
-                                        ],
+                                                ),
+                                              ),
+                                            ],
+                                          );
+                                        },
                                       ),
                                     ),
                                 ],

@@ -1,9 +1,10 @@
-import 'dart:math' as math;
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+import 'grower_details_view.dart';
+import 'navigation_provider.dart';
 import 'user_account_service.dart';
+import 'user_system.dart';
 
 String _firebaseErrorMessage(Object error) {
   if (error is FirebaseException) {
@@ -14,8 +15,17 @@ String _firebaseErrorMessage(Object error) {
 
 class UserManagementView extends StatefulWidget {
   final String currentUserRole;
+  final NavigationProvider navigationProvider;
+  final VoidCallback onToggleTheme;
+  final VoidCallback onLogout;
 
-  const UserManagementView({super.key, required this.currentUserRole});
+  const UserManagementView({
+    super.key,
+    required this.currentUserRole,
+    required this.navigationProvider,
+    required this.onToggleTheme,
+    required this.onLogout,
+  });
 
   @override
   State<UserManagementView> createState() => _UserManagementViewState();
@@ -27,12 +37,41 @@ class _UserManagementViewState extends State<UserManagementView> {
   String? _selectedDocId;
   bool _sortUserIdAscending = true;
 
-  bool get _isAdmin => UserAccountService.isAdminRole(widget.currentUserRole);
-  bool get _canUpdateOrDeleteGrowers => _isAdmin;
+  bool get _canUpdateOrDeleteGrowers => true;
 
   String _safeString(dynamic value, {String fallback = ''}) {
     final text = value?.toString().trim() ?? '';
     return text.isEmpty ? fallback : text;
+  }
+
+  String _displayUserId(dynamic value, String docId) {
+    if (value is num) return value.toInt().toString();
+    final fallback = docId.trim();
+    if (fallback.isEmpty) return 'N/A';
+    return fallback.length <= 5 ? fallback : fallback.substring(0, 5);
+  }
+
+  String _userIdForQuery(dynamic value, String docId) {
+    final text = value?.toString().trim() ?? '';
+    return text.isEmpty ? docId : text;
+  }
+
+  int? _numericUserId(dynamic value) {
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString().trim() ?? '');
+  }
+
+  String _fullName(Map<String, dynamic> userData) {
+    final first = _safeString(userData['first_name']).isNotEmpty
+        ? _safeString(userData['first_name'])
+        : _safeString(userData['firstName']);
+    final last = _safeString(userData['last_name']).isNotEmpty
+        ? _safeString(userData['last_name'])
+        : _safeString(userData['lastName']);
+    final name = '$first $last'.trim();
+    return name.isEmpty
+        ? _safeString(userData['email'], fallback: 'Unknown User')
+        : name;
   }
 
   bool _canViewRole(String role) {
@@ -116,11 +155,6 @@ class _UserManagementViewState extends State<UserManagementView> {
             }
           }
 
-          final rowsPerPage = math.min(
-            PaginatedDataTable.defaultRowsPerPage,
-            math.max(1, allData.length),
-          );
-
           return SingleChildScrollView(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -137,23 +171,20 @@ class _UserManagementViewState extends State<UserManagementView> {
                         child: const Text('Create'),
                       ),
                       if (_canUpdateOrDeleteGrowers)
-                        OutlinedButton(
-                          onPressed: selectedDoc == null
-                              ? null
-                              : () => _editUser(selectedDoc!),
-                          child: const Text('Update'),
-                        ),
-                      if (_canUpdateOrDeleteGrowers)
                         FilledButton(
                           onPressed: selectedDoc == null
                               ? null
                               : () {
                                   final data = selectedDoc!.data();
-                                  final fullName = _safeString(
-                                    '${data['first_name'] ?? ''} ${data['last_name'] ?? ''}',
-                                    fallback: 'User',
+                                  final fullName = _fullName(data);
+                                  final numericId = _numericUserId(
+                                    selectedDoc.data()['user_id'],
                                   );
-                                  _deleteUser(selectedDoc.id, fullName);
+                                  _deleteUser(
+                                    selectedDoc.id,
+                                    fullName,
+                                    numericId,
+                                  );
                                 },
                           style: FilledButton.styleFrom(
                             backgroundColor: Theme.of(
@@ -223,33 +254,51 @@ class _UserManagementViewState extends State<UserManagementView> {
                     ),
                   )
                 else
-                  PaginatedDataTable(
-                    header: const Text('Grower Accounts'),
-                    columnSpacing: 16,
-                    horizontalMargin: 10,
-                    headingRowHeight: 48,
-                    dataRowMinHeight: 44,
-                    dataRowMaxHeight: 44,
-                    showCheckboxColumn: false,
-                    columns: const [
-                      DataColumn(label: Text('User ID')),
-                      DataColumn(label: Text('First Name')),
-                      DataColumn(label: Text('Last Name')),
-                      DataColumn(label: Text('Email')),
-                      DataColumn(label: Text('Phone Number')),
-                      DataColumn(label: Text('Address')),
-                      DataColumn(label: Text('Status')),
-                      DataColumn(label: Text('History')),
-                    ],
-                    source: _UsersDataSource(
-                      allData,
-                      selectedDocId: _selectedDocId,
-                      onSelect: (id) {
-                        setState(() => _selectedDocId = id);
-                      },
-                      onViewUser: _openUserDetails,
-                    ),
-                    rowsPerPage: rowsPerPage,
+                  ListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: allData.length,
+                    itemBuilder: (context, index) {
+                      final doc = allData[index];
+                      final data = doc.data();
+                      final userId = _displayUserId(data['user_id'], doc.id);
+                      final userIdForQuery = _userIdForQuery(
+                        data['user_id'],
+                        doc.id,
+                      );
+                      final fullName = _fullName(data);
+                      final email = _safeString(
+                        data['email'],
+                        fallback: 'No email provided',
+                      );
+                      final address = _safeString(
+                        data['address'],
+                        fallback: 'No address provided',
+                      );
+                      final status = _safeString(
+                        data['status'],
+                        fallback: 'active',
+                      );
+                      final role = _safeString(
+                        data['role'],
+                        fallback: 'grower',
+                      );
+
+                      return GrowerCard(
+                        userDocId: doc.id,
+                        userId: userId,
+                        fullName: fullName,
+                        email: email,
+                        address: address,
+                        status: status,
+                        role: role,
+                        onSelect: () {
+                          setState(() => _selectedDocId = doc.id);
+                        },
+                        onView: () => _openUserDetails(doc, userIdForQuery),
+                        onEdit: () => _editUser(doc),
+                      );
+                    },
                   ),
               ],
             ),
@@ -273,128 +322,558 @@ class _UserManagementViewState extends State<UserManagementView> {
     _showUserDialog(document);
   }
 
-  void _deleteUser(String id, String name) {
+  Future<void> _hardDeleteUser({
+    required String uid,
+    required int? numericUserId,
+  }) async {
+    final userRef = _firestore.collection('user').doc(uid);
+    final refsToDelete = <DocumentReference>[];
+
+    final systemsSnapshot = await userRef.collection('systems').get();
+    for (final systemDoc in systemsSnapshot.docs) {
+      final weeklySnapshot =
+          await systemDoc.reference.collection('weekly_logs').get();
+      refsToDelete.addAll(weeklySnapshot.docs.map((doc) => doc.reference));
+      refsToDelete.add(systemDoc.reference);
+    }
+
+    if (numericUserId != null) {
+      final ticketsSnapshot = await _firestore
+          .collection('support_tickets')
+          .where('user_id', isEqualTo: numericUserId)
+          .get();
+      refsToDelete.addAll(ticketsSnapshot.docs.map((doc) => doc.reference));
+    }
+
+    refsToDelete.add(userRef);
+
+    if (refsToDelete.length > 450) {
+      throw FirebaseException(
+        plugin: 'cloud_firestore',
+        code: 'too-many-deletes',
+        message:
+            'Too many related records to delete in a single batch. Please run a server-side cleanup.',
+      );
+    }
+
+    final batch = _firestore.batch();
+    for (final ref in refsToDelete) {
+      batch.delete(ref);
+    }
+    await batch.commit();
+
+    await UserAccountService.deleteUserAccount(uid: uid);
+  }
+
+  void _deleteUser(String id, String name, int? numericUserId) {
     final rootContext = context;
     showDialog(
       context: rootContext,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Confirm Delete'),
-        content: Text('Are you sure you want to delete "$name"?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(rootContext).colorScheme.error,
-            ),
-            onPressed: () async {
-              Navigator.pop(dialogContext);
-              try {
-                await _firestore.collection('user').doc(id).delete();
-                if (!rootContext.mounted) return;
-                ScaffoldMessenger.of(
-                  rootContext,
-                ).showSnackBar(SnackBar(content: Text('Deleted "$name"')));
-              } on Object catch (e) {
-                if (!rootContext.mounted) return;
-                ScaffoldMessenger.of(rootContext).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      'Error deleting user: ${_firebaseErrorMessage(e)}',
-                    ),
+      builder: (dialogContext) {
+        final confirmCtrl = TextEditingController();
+        bool isDeleting = false;
+        String? errorText;
+
+        return StatefulBuilder(
+          builder: (context, setState) {
+            final normalizedName = name.trim().toLowerCase();
+            final normalizedInput = confirmCtrl.text.trim().toLowerCase();
+            final canDelete = normalizedInput == 'delete' ||
+                (normalizedName.isNotEmpty && normalizedInput == normalizedName);
+
+            return AlertDialog(
+              title: const Text('Confirm Hard Delete'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'Type the grower name or "DELETE" to confirm hard deletion.',
                   ),
-                );
-              }
-            },
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: confirmCtrl,
+                    decoration: InputDecoration(
+                      labelText: 'Confirmation',
+                      border: const OutlineInputBorder(),
+                      errorText: errorText,
+                    ),
+                    onChanged: (_) => setState(() {}),
+                    enabled: !isDeleting,
+                  ),
+                  if (isDeleting) ...[
+                    const SizedBox(height: 16),
+                    const LinearProgressIndicator(),
+                  ],
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isDeleting ? null : () => Navigator.pop(dialogContext),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Theme.of(rootContext).colorScheme.error,
+                  ),
+                  onPressed: !canDelete || isDeleting
+                      ? null
+                      : () async {
+                          setState(() {
+                            isDeleting = true;
+                            errorText = null;
+                          });
+                          try {
+                            await _hardDeleteUser(
+                              uid: id,
+                              numericUserId: numericUserId,
+                            );
+                            if (!rootContext.mounted) return;
+                            Navigator.pop(dialogContext);
+                            widget.navigationProvider.setIndex(1);
+                            ScaffoldMessenger.of(rootContext).showSnackBar(
+                              SnackBar(content: Text('Deleted "$name"')),
+                            );
+                          } on Object catch (e) {
+                            if (!rootContext.mounted) return;
+                            setState(() {
+                              isDeleting = false;
+                              errorText = _firebaseErrorMessage(e);
+                            });
+                          }
+                        },
+                  child: const Text('Delete'),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 
-  void _openUserDetails(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
-    final data = doc.data();
-    final userId = _safeString(data['user_id'], fallback: doc.id);
-    final email = _safeString(data['email']);
+  void _openUserDetails(
+    QueryDocumentSnapshot<Map<String, dynamic>> doc,
+    String userIdForQuery,
+  ) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) =>
-            _UserDetailsPage(userDocId: doc.id, userId: userId, email: email),
+        builder: (_) => GrowerDetailsView(
+          userDocId: doc.id,
+          userId: userIdForQuery,
+          currentUserRole: widget.currentUserRole,
+          navigationProvider: widget.navigationProvider,
+          onToggleTheme: widget.onToggleTheme,
+          onLogout: widget.onLogout,
+        ),
       ),
     );
   }
 }
 
-class _UsersDataSource extends DataTableSource {
-  final List<QueryDocumentSnapshot<Map<String, dynamic>>> _data;
-  final String? selectedDocId;
-  final ValueChanged<String?> onSelect;
-  final ValueChanged<QueryDocumentSnapshot<Map<String, dynamic>>> onViewUser;
+class GrowerCard extends StatefulWidget {
+  final String userDocId;
+  final String userId;
+  final String fullName;
+  final String email;
+  final String address;
+  final String status;
+  final String role;
+  final VoidCallback onSelect;
+  final VoidCallback onView;
+  final VoidCallback onEdit;
 
-  _UsersDataSource(
-    this._data, {
-    required this.selectedDocId,
+  const GrowerCard({
+    super.key,
+    required this.userDocId,
+    required this.userId,
+    required this.fullName,
+    required this.email,
+    required this.address,
+    required this.status,
+    required this.role,
     required this.onSelect,
-    required this.onViewUser,
+    required this.onView,
+    required this.onEdit,
   });
 
-  String _safeString(dynamic value, {String fallback = '-'}) {
-    final text = value?.toString().trim() ?? '';
-    return text.isEmpty ? fallback : text;
-  }
+  @override
+  State<GrowerCard> createState() => _GrowerCardState();
+}
+
+class _GrowerCardState extends State<GrowerCard> {
+  bool _isHovered = false;
 
   @override
-  DataRow? getRow(int index) {
-    if (index >= _data.length) return null;
-    final doc = _data[index];
-    final data = doc.data();
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final elevation = _isHovered ? 2.4 : 1.2;
 
-    final firstName = _safeString(data['first_name']);
-    final lastName = _safeString(data['last_name']);
-    final email = _safeString(data['email']);
-    final phoneNumber = _safeString(data['phone_num']);
-    final address = _safeString(data['address']);
-    final status = _safeString(
-      data['status'],
-      fallback: 'active',
-    ).toLowerCase();
-    final userId = _safeString(data['user_id'], fallback: doc.id);
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+        child: Card(
+          color: scheme.surface,
+          elevation: elevation,
+          shadowColor: scheme.shadow,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          margin: const EdgeInsets.only(bottom: 12),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: scheme.primary, width: 1),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final isCompact = constraints.maxWidth < 820;
+                  final details = _GrowerDetailsSection(
+                    fullName: widget.fullName,
+                    email: widget.email,
+                    address: widget.address,
+                    userId: widget.userId,
+                  );
+                  final statusMetrics = _GrowerStatusSection(
+                    userDocId: widget.userDocId,
+                  );
+                  final actions = _GrowerActionSection(
+                    onView: widget.onView,
+                    onEdit: widget.onEdit,
+                  );
 
-    return DataRow.byIndex(
-      index: index,
-      selected: doc.id == selectedDocId,
-      onSelectChanged: (selected) => onSelect(selected == true ? doc.id : null),
-      cells: [
-        DataCell(Text(userId, overflow: TextOverflow.ellipsis)),
-        DataCell(
-          Text(firstName, style: const TextStyle(fontWeight: FontWeight.w600)),
+                  return InkWell(
+                    borderRadius: BorderRadius.circular(16),
+                    onTap: widget.onSelect,
+                    hoverColor: scheme.onSurface.withOpacity(0.04),
+                    child: isCompact
+                        ? Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              details,
+                              const SizedBox(height: 12),
+                              statusMetrics,
+                              const SizedBox(height: 12),
+                              actions,
+                            ],
+                          )
+                        : Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(flex: 4, child: details),
+                              const SizedBox(width: 16),
+                              Expanded(flex: 3, child: statusMetrics),
+                              const SizedBox(width: 20),
+                              SizedBox(width: 180, child: actions),
+                            ],
+                          ),
+                  );
+                },
+              ),
+            ),
+          ),
         ),
-        DataCell(Text(lastName)),
-        DataCell(Text(email)),
-        DataCell(Text(phoneNumber)),
-        DataCell(Text(address)),
-        DataCell(Text(status)),
-        DataCell(
-          TextButton(
-            onPressed: () => onViewUser(doc),
-            child: const Text('View User'),
+      ),
+    );
+  }
+}
+
+class _GrowerDetailsSection extends StatelessWidget {
+  const _GrowerDetailsSection({
+    required this.fullName,
+    required this.email,
+    required this.address,
+    required this.userId,
+  });
+
+  final String fullName;
+  final String email;
+  final String address;
+  final String userId;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'ID: $userId',
+              style: textTheme.labelLarge?.copyWith(
+                color: scheme.onSurface,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              fullName,
+              style: textTheme.titleMedium?.copyWith(
+                color: scheme.onSurface,
+                fontWeight: FontWeight.w700,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Text(
+          email,
+          style: textTheme.bodyMedium?.copyWith(
+            color: scheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          address,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: textTheme.bodyMedium?.copyWith(
+            color: scheme.onSurfaceVariant,
           ),
         ),
       ],
     );
   }
+}
+
+class _GrowerStatusSection extends StatelessWidget {
+  const _GrowerStatusSection({
+    required this.userDocId,
+  });
+
+  final String userDocId;
 
   @override
-  bool get isRowCountApproximate => false;
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'System Status',
+          style: textTheme.labelMedium?.copyWith(
+            color: scheme.onSurfaceVariant,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 8),
+        _SystemUnitsChip(userDocId: userDocId),
+      ],
+    );
+  }
+}
+
+class _SystemUnitsChip extends StatefulWidget {
+  final String userDocId;
+
+  const _SystemUnitsChip({required this.userDocId});
 
   @override
-  int get rowCount => _data.length;
+  State<_SystemUnitsChip> createState() => _SystemUnitsChipState();
+}
+
+class _SystemUnitsChipState extends State<_SystemUnitsChip> {
+  String? _lastSummary;
+  bool _lastIsEmpty = true;
+
+  String _summaryText({
+    required int total,
+    required int active,
+    required int unclaimed,
+    required int inactive,
+  }) {
+    if (total == 0) return 'No Units Assigned';
+
+    final parts = <String>[];
+    if (active > 0) parts.add('$active Active');
+    if (unclaimed > 0) parts.add('$unclaimed Unclaimed');
+    if (inactive > 0) parts.add('$inactive Inactive');
+    final breakdown = parts.isEmpty ? '' : ' (${parts.join(', ')})';
+    return 'Units: $total$breakdown';
+  }
 
   @override
-  int get selectedRowCount => 0;
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection('user')
+          .doc(widget.userDocId)
+          .collection('systems')
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return _ParameterItem(
+            label: 'Units',
+            value: 'Unavailable',
+          );
+        }
+        final docs = snapshot.data?.docs ?? const [];
+        String? summary = _lastSummary;
+        var isEmpty = _lastIsEmpty;
+
+        if (snapshot.hasData && docs.isNotEmpty) {
+          var active = 0;
+          var unclaimed = 0;
+          var inactive = 0;
+          for (final doc in docs) {
+            final data = doc.data();
+            final isActive = data['is_system_active'] == true;
+            final code = (data['provision_code'] ?? '').toString().trim();
+            if (isActive) {
+              active += 1;
+            } else if (code.isNotEmpty) {
+              unclaimed += 1;
+            } else {
+              inactive += 1;
+            }
+          }
+          final total = docs.length;
+          summary = _summaryText(
+            total: total,
+            active: active,
+            unclaimed: unclaimed,
+            inactive: inactive,
+          );
+          isEmpty = total == 0;
+          _lastSummary = summary;
+          _lastIsEmpty = isEmpty;
+        } else if (snapshot.connectionState == ConnectionState.active &&
+            snapshot.hasData) {
+          summary = _summaryText(
+            total: 0,
+            active: 0,
+            unclaimed: 0,
+            inactive: 0,
+          );
+          isEmpty = true;
+          _lastSummary = summary;
+          _lastIsEmpty = isEmpty;
+        }
+
+        final isLoading =
+            snapshot.connectionState == ConnectionState.waiting &&
+                _lastSummary == null;
+
+        return Container(
+          constraints: const BoxConstraints(minWidth: 140),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: scheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: scheme.outlineVariant),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.inventory_2_rounded,
+                size: 14,
+                color: isEmpty
+                    ? scheme.onSurfaceVariant
+                    : scheme.primary,
+              ),
+              const SizedBox(width: 6),
+              Flexible(
+                child: isLoading
+                    ? Opacity(
+                        opacity: 0.35,
+                        child: Text(
+                          'Units: 0 (0 Active, 0 Unclaimed)',
+                          style: textTheme.labelSmall?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      )
+                    : Text(
+                        summary ?? 'Units: 0',
+                        style: textTheme.labelSmall?.copyWith(
+                          color: isEmpty
+                              ? scheme.onSurfaceVariant
+                              : scheme.onSurface,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _ParameterItem extends StatelessWidget {
+  const _ParameterItem({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      constraints: const BoxConstraints(minWidth: 140),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: Text(
+        '$label: $value',
+        style: TextStyle(
+          color: scheme.onSurface,
+          fontWeight: FontWeight.w600,
+          fontSize: 12,
+        ),
+      ),
+    );
+  }
+}
+
+class _GrowerActionSection extends StatelessWidget {
+  const _GrowerActionSection({
+    required this.onView,
+    required this.onEdit,
+  });
+
+  final VoidCallback onView;
+  final VoidCallback onEdit;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        OutlinedButton(
+          onPressed: onView,
+          child: const Text('View User'),
+        ),
+        const SizedBox(height: 8),
+        ElevatedButton.icon(
+          onPressed: onEdit,
+          icon: const Icon(Icons.edit_outlined, size: 16),
+          label: const Text('Update'),
+        ),
+      ],
+    );
+  }
 }
 
 class _UserDetailsPage extends StatefulWidget {
@@ -414,6 +893,7 @@ class _UserDetailsPage extends StatefulWidget {
 
 class _UserDetailsPageState extends State<_UserDetailsPage> {
   String _selectedAverageRange = 'Daily';
+  String? _selectedSystemId;
 
   static const List<String> _averageRanges = ['Daily', 'Weekly', 'Monthly'];
 
@@ -472,64 +952,80 @@ class _UserDetailsPageState extends State<_UserDetailsPage> {
     required Widget child,
     Widget? trailing,
   }) {
-    final titleColor = Colors.white;
-    final bodyColor = accentColor.withOpacity(0.06);
-    final borderColor = accentColor.withOpacity(0.24);
+    final colorScheme = Theme.of(context).colorScheme;
+    final titleColor = colorScheme.onPrimary;
+    final surfaceColor = colorScheme.surface;
+    final bodyColor = Color.alphaBlend(
+      accentColor.withOpacity(0.12),
+      surfaceColor,
+    );
+    final borderColor = colorScheme.primary;
 
     return Card(
       elevation: 1.5,
+      color: surfaceColor,
       margin: EdgeInsets.zero,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: borderColor),
       ),
       clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Container(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [accentColor, accentColor.withOpacity(0.86)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: borderColor, width: 1),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    accentColor,
+                    Color.alphaBlend(accentColor.withOpacity(0.2), accentColor),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
               ),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    title,
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: titleColor,
-                      fontWeight: FontWeight.w700,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: titleColor,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
-                ),
-                if (trailing != null) trailing,
-              ],
+                  if (trailing != null) trailing,
+                ],
+              ),
             ),
-          ),
-          Container(
-            color: bodyColor,
-            padding: const EdgeInsets.all(16),
-            child: child,
-          ),
-        ],
+            Container(
+              color: bodyColor,
+              padding: const EdgeInsets.all(16),
+              child: child,
+            ),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildTableShell({
     required Widget child,
-    Color backgroundColor = Colors.white,
+    Color? backgroundColor,
   }) {
+    final scheme = Theme.of(context).colorScheme;
+    final effectiveBackground = backgroundColor ?? scheme.surface;
     return Container(
       decoration: BoxDecoration(
-        color: backgroundColor,
+        color: effectiveBackground,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFD8E2E0)),
+        border: Border.all(color: scheme.outlineVariant),
       ),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
@@ -540,21 +1036,16 @@ class _UserDetailsPageState extends State<_UserDetailsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: const Color(0xFFF2F6F5),
+      backgroundColor: colorScheme.surface,
       appBar: AppBar(
         title: const Text('User Details'),
-        backgroundColor: const Color(0xFF0F766E),
-        foregroundColor: Colors.white,
+        backgroundColor: colorScheme.primary,
+        foregroundColor: colorScheme.onPrimary,
       ),
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Color(0xFFF2F6F5), Color(0xFFEAF1EF)],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          ),
-        ),
+        decoration: BoxDecoration(color: colorScheme.surface),
         child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
           stream: FirebaseFirestore.instance
               .collection('user')
@@ -578,74 +1069,138 @@ class _UserDetailsPageState extends State<_UserDetailsPage> {
               return const Center(child: Text('User document not found.'));
             }
 
-            final averagesMap = _asStringMap(userData['sensor_averages']);
-            final selectedKey = _selectedRangeKey();
-            final currentAverages = _asStringMap(averagesMap[selectedKey]);
+            return StreamBuilder<List<UserSystem>>(
+              stream: UserAccountService.watchUserSystems(widget.userDocId),
+              builder: (context, systemsSnapshot) {
+                if (systemsSnapshot.hasError) {
+                  return Center(
+                    child: Text(
+                      'Error loading systems: ${systemsSnapshot.error}',
+                      style: TextStyle(color: Theme.of(context).colorScheme.error),
+                    ),
+                  );
+                }
+                if (systemsSnapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                final systems = systemsSnapshot.data ?? [];
+                if (_selectedSystemId == null && systems.isNotEmpty) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (!mounted) return;
+                    setState(() => _selectedSystemId = systems.first.id);
+                  });
+                }
+                final selectedSystem = systems.isEmpty
+                    ? null
+                    : systems.firstWhere(
+                        (system) => system.id == _selectedSystemId,
+                        orElse: () => systems.first,
+                      );
+                final systemLabel = (UserSystem system) =>
+                    system.systemName.trim().isNotEmpty
+                        ? system.systemName
+                        : 'System ${system.id}';
+
+                final averagesMap =
+                    _asStringMap(selectedSystem?.sensorAverages);
+                final selectedKey = _selectedRangeKey();
+                final currentAverages = _asStringMap(averagesMap[selectedKey]);
+                final harvestTotals =
+                    _asStringMap(selectedSystem?.harvestTotals);
+            final onSurface = colorScheme.onSurface;
+            final onSurfaceVariant = colorScheme.onSurfaceVariant;
             final sensorAverageRows = <DataRow>[
               DataRow(
                 cells: [
-                  const DataCell(Text('Water Temperature (\u00B0C)')),
+                  DataCell(
+                    Text(
+                      'Water Temperature (\u00B0C)',
+                      style: TextStyle(color: onSurface),
+                    ),
+                  ),
                   DataCell(
                     Text(
                       _formatAverageReading(
                         currentAverages['temp'],
                         unit: '\u00B0C',
                       ),
+                      style: TextStyle(color: onSurface),
                     ),
                   ),
                 ],
               ),
               DataRow(
                 cells: [
-                  const DataCell(Text('pH Level')),
-                  DataCell(Text(_formatAverageReading(currentAverages['ph']))),
+                  DataCell(Text('pH Level', style: TextStyle(color: onSurface))),
+                  DataCell(
+                    Text(
+                      _formatAverageReading(currentAverages['ph']),
+                      style: TextStyle(color: onSurface),
+                    ),
+                  ),
                 ],
               ),
               DataRow(
                 cells: [
-                  const DataCell(Text('Dissolved Oxygen (mg/L)')),
+                  DataCell(
+                    Text(
+                      'Dissolved Oxygen (mg/L)',
+                      style: TextStyle(color: onSurface),
+                    ),
+                  ),
                   DataCell(
                     Text(
                       _formatAverageReading(currentAverages['do'], unit: 'mg/L'),
+                      style: TextStyle(color: onSurface),
                     ),
                   ),
                 ],
               ),
               DataRow(
                 cells: [
-                  const DataCell(Text('Ammonia (ppm)')),
+                  DataCell(
+                    Text('Ammonia (ppm)', style: TextStyle(color: onSurface)),
+                  ),
                   DataCell(
                     Text(
                       _formatAverageReading(
                         currentAverages['ammonia'],
                         unit: 'ppm',
                       ),
+                      style: TextStyle(color: onSurface),
                     ),
                   ),
                 ],
               ),
               DataRow(
                 cells: [
-                  const DataCell(Text('Salinity (ppt)')),
+                  DataCell(
+                    Text('Salinity (ppt)', style: TextStyle(color: onSurface)),
+                  ),
                   DataCell(
                     Text(
                       _formatAverageReading(
                         currentAverages['salinity'],
                         unit: 'ppt',
                       ),
+                      style: TextStyle(color: onSurface),
                     ),
                   ),
                 ],
               ),
               DataRow(
                 cells: [
-                  const DataCell(Text('Turbidity (NTU)')),
+                  DataCell(
+                    Text('Turbidity (NTU)', style: TextStyle(color: onSurface)),
+                  ),
                   DataCell(
                     Text(
                       _formatAverageReading(
                         currentAverages['turbidity'],
                         unit: 'NTU',
                       ),
+                      style: TextStyle(color: onSurface),
                     ),
                   ),
                 ],
@@ -653,8 +1208,6 @@ class _UserDetailsPageState extends State<_UserDetailsPage> {
             ];
 
             const hiddenProfileFields = {
-              'active_plant_id',
-              'active_fish_id',
               'current_plant_id',
               'current_fish_id',
               'sensor_averages',
@@ -673,11 +1226,21 @@ class _UserDetailsPageState extends State<_UserDetailsPage> {
                     .toList()
                   ..sort();
 
-            const extraProfileRows = [
+            final extraProfileRows = [
               DataRow(
                 cells: [
-                  DataCell(Text('Participant Join Date')),
-                  DataCell(Text('January 15, 2026')),
+                  DataCell(
+                    Text(
+                      'Participant Join Date',
+                      style: TextStyle(color: onSurface),
+                    ),
+                  ),
+                  DataCell(
+                    Text(
+                      'January 15, 2026',
+                      style: TextStyle(color: onSurface),
+                    ),
+                  ),
                 ],
               ),
             ];
@@ -688,8 +1251,18 @@ class _UserDetailsPageState extends State<_UserDetailsPage> {
               profileRows.add(
                 DataRow(
                   cells: [
-                    DataCell(Text(_formatFieldName(key))),
-                    DataCell(Text(_formatValue(userData[key]))),
+                    DataCell(
+                      Text(
+                        _formatFieldName(key),
+                        style: TextStyle(color: onSurface),
+                      ),
+                    ),
+                    DataCell(
+                      Text(
+                        _formatValue(userData[key]),
+                        style: TextStyle(color: onSurface),
+                      ),
+                    ),
                   ],
                 ),
               );
@@ -708,10 +1281,22 @@ class _UserDetailsPageState extends State<_UserDetailsPage> {
               accentColor: const Color(0xFF1D4ED8),
               child: _buildTableShell(
                 child: DataTable(
-                  columns: const [
-                    DataColumn(label: Text('Information')),
-                    DataColumn(label: Text('Details')),
+                  columns: [
+                    DataColumn(
+                      label: Text(
+                        'Information',
+                        style: TextStyle(color: onSurfaceVariant),
+                      ),
+                    ),
+                    DataColumn(
+                      label: Text(
+                        'Details',
+                        style: TextStyle(color: onSurfaceVariant),
+                      ),
+                    ),
                   ],
+                  dataTextStyle: TextStyle(color: onSurface),
+                  headingTextStyle: TextStyle(color: onSurfaceVariant),
                   rows: profileRows,
                 ),
               ),
@@ -726,19 +1311,19 @@ class _UserDetailsPageState extends State<_UserDetailsPage> {
                 child: DropdownButtonFormField<String>(
                   value: _selectedAverageRange,
                   isExpanded: true,
-                  dropdownColor: Colors.white,
-                  style: const TextStyle(
-                    color: Color(0xFF0F172A),
+                  dropdownColor: colorScheme.surface,
+                  style: TextStyle(
+                    color: onSurface,
                     fontSize: 14,
                   ),
                   decoration: InputDecoration(
                     isDense: true,
                     filled: true,
-                    fillColor: Colors.white,
+                    fillColor: colorScheme.surface,
                     hintText: 'Daily',
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
-                      borderSide: BorderSide.none,
+                      borderSide: BorderSide(color: colorScheme.outlineVariant),
                     ),
                     contentPadding: const EdgeInsets.symmetric(
                       horizontal: 10,
@@ -749,7 +1334,10 @@ class _UserDetailsPageState extends State<_UserDetailsPage> {
                       .map(
                         (range) => DropdownMenuItem<String>(
                           value: range,
-                          child: Text(range),
+                          child: Text(
+                            range,
+                            style: TextStyle(color: onSurface),
+                          ),
                         ),
                       )
                       .toList(),
@@ -761,56 +1349,108 @@ class _UserDetailsPageState extends State<_UserDetailsPage> {
               ),
               child: _buildTableShell(
                 child: DataTable(
-                  columns: const [
-                    DataColumn(label: Text('Parameter')),
-                    DataColumn(label: Text('Average Reading')),
+                  columns: [
+                    DataColumn(
+                      label: Text(
+                        'Parameter',
+                        style: TextStyle(color: onSurfaceVariant),
+                      ),
+                    ),
+                    DataColumn(
+                      label: Text(
+                        'Average Reading',
+                        style: TextStyle(color: onSurfaceVariant),
+                      ),
+                    ),
                   ],
+                  dataTextStyle: TextStyle(color: onSurface),
+                  headingTextStyle: TextStyle(color: onSurfaceVariant),
                   rows: sensorAverageRows,
                 ),
               ),
             );
 
-            const aquacultureInfoRows = [
+            final aquacultureInfoRows = [
               DataRow(
                 cells: [
-                  DataCell(Text('Fish Species')),
-                  DataCell(Text('Catfish')),
+                  DataCell(
+                    Text('Fish Species', style: TextStyle(color: onSurface)),
+                  ),
+                  DataCell(
+                    Text('Catfish', style: TextStyle(color: onSurface)),
+                  ),
                 ],
               ),
               DataRow(
                 cells: [
-                  DataCell(Text('Stocking Date')),
-                  DataCell(Text('January 20, 2026')),
+                  DataCell(
+                    Text('Stocking Date', style: TextStyle(color: onSurface)),
+                  ),
+                  DataCell(
+                    Text('January 20, 2026', style: TextStyle(color: onSurface)),
+                  ),
                 ],
               ),
               DataRow(
                 cells: [
-                  DataCell(Text('Initial Stock Quantity')),
-                  DataCell(Text('50')),
+                  DataCell(
+                    Text(
+                      'Initial Stock Quantity',
+                      style: TextStyle(color: onSurface),
+                    ),
+                  ),
+                  DataCell(Text('50', style: TextStyle(color: onSurface))),
                 ],
               ),
               DataRow(
                 cells: [
-                  DataCell(Text('Current Population')),
-                  DataCell(Text('50')),
+                  DataCell(
+                    Text(
+                      'Current Population',
+                      style: TextStyle(color: onSurface),
+                    ),
+                  ),
+                  DataCell(Text('50', style: TextStyle(color: onSurface))),
                 ],
               ),
               DataRow(
                 cells: [
-                  DataCell(Text('Average Fish Size')),
-                  DataCell(Text('Small, Medium, Big')),
+                  DataCell(
+                    Text(
+                      'Average Fish Size',
+                      style: TextStyle(color: onSurface),
+                    ),
+                  ),
+                  DataCell(
+                    Text(
+                      'Small, Medium, Big',
+                      style: TextStyle(color: onSurface),
+                    ),
+                  ),
                 ],
               ),
               DataRow(
                 cells: [
-                  DataCell(Text('Survival Rate')),
-                  DataCell(Text('100%')),
+                  DataCell(
+                    Text('Survival Rate', style: TextStyle(color: onSurface)),
+                  ),
+                  DataCell(Text('100%', style: TextStyle(color: onSurface))),
                 ],
               ),
               DataRow(
                 cells: [
-                  DataCell(Text('Monitoring Schedule')),
-                  DataCell(Text('Every 1st of the month')),
+                  DataCell(
+                    Text(
+                      'Monitoring Schedule',
+                      style: TextStyle(color: onSurface),
+                    ),
+                  ),
+                  DataCell(
+                    Text(
+                      'Every 1st of the month',
+                      style: TextStyle(color: onSurface),
+                    ),
+                  ),
                 ],
               ),
             ];
@@ -821,62 +1461,117 @@ class _UserDetailsPageState extends State<_UserDetailsPage> {
               accentColor: const Color(0xFF0369A1),
               child: _buildTableShell(
                 child: DataTable(
-                  columns: const [
-                    DataColumn(label: Text('Information')),
-                    DataColumn(label: Text('Details')),
+                  columns: [
+                    DataColumn(
+                      label: Text(
+                        'Information',
+                        style: TextStyle(color: onSurfaceVariant),
+                      ),
+                    ),
+                    DataColumn(
+                      label: Text(
+                        'Details',
+                        style: TextStyle(color: onSurfaceVariant),
+                      ),
+                    ),
                   ],
+                  dataTextStyle: TextStyle(color: onSurface),
+                  headingTextStyle: TextStyle(color: onSurfaceVariant),
                   rows: aquacultureInfoRows,
                 ),
               ),
             );
 
-            const plantInfoRows = [
-              DataRow(
-                cells: [DataCell(Text('Crop Type')), DataCell(Text('Basil'))],
-              ),
-              DataRow(
-                cells: [DataCell(Text('Overall Batches')), DataCell(Text('5'))],
-              ),
+            final plantInfoRows = [
               DataRow(
                 cells: [
-                  DataCell(Text('Crops Per Batch')),
-                  DataCell(Text('30')),
+                  DataCell(Text('Crop Type', style: TextStyle(color: onSurface))),
+                  DataCell(Text('Basil', style: TextStyle(color: onSurface))),
                 ],
               ),
               DataRow(
                 cells: [
-                  DataCell(Text('Current Batch')),
-                  DataCell(Text('Batch 2')),
+                  DataCell(
+                    Text('Overall Batches', style: TextStyle(color: onSurface)),
+                  ),
+                  DataCell(
+                    Text(
+                      _formatValue(harvestTotals['total_plant_batches']),
+                      style: TextStyle(color: onSurface),
+                    ),
+                  ),
                 ],
               ),
               DataRow(
                 cells: [
-                  DataCell(Text('Planting Date')),
-                  DataCell(Text('February 3, 2026')),
+                  DataCell(
+                    Text('Crops Per Batch', style: TextStyle(color: onSurface)),
+                  ),
+                  DataCell(Text('30', style: TextStyle(color: onSurface))),
                 ],
               ),
               DataRow(
                 cells: [
-                  DataCell(Text('Expected Harvest Date')),
-                  DataCell(Text('March 28, 2026')),
+                  DataCell(
+                    Text('Current Batch', style: TextStyle(color: onSurface)),
+                  ),
+                  DataCell(Text('Batch 2', style: TextStyle(color: onSurface))),
                 ],
               ),
               DataRow(
                 cells: [
-                  DataCell(Text('Growth Stage')),
-                  DataCell(Text('Vegetative')),
+                  DataCell(
+                    Text('Planting Date', style: TextStyle(color: onSurface)),
+                  ),
+                  DataCell(
+                    Text('February 3, 2026', style: TextStyle(color: onSurface)),
+                  ),
                 ],
               ),
               DataRow(
                 cells: [
-                  DataCell(Text('Crop Status')),
-                  DataCell(Text('Healthy')),
+                  DataCell(
+                    Text(
+                      'Expected Harvest Date',
+                      style: TextStyle(color: onSurface),
+                    ),
+                  ),
+                  DataCell(
+                    Text('March 28, 2026', style: TextStyle(color: onSurface)),
+                  ),
                 ],
               ),
               DataRow(
                 cells: [
-                  DataCell(Text('Monitoring Schedule')),
-                  DataCell(Text('Every Monday')),
+                  DataCell(
+                    Text('Growth Stage', style: TextStyle(color: onSurface)),
+                  ),
+                  DataCell(
+                    Text('Vegetative', style: TextStyle(color: onSurface)),
+                  ),
+                ],
+              ),
+              DataRow(
+                cells: [
+                  DataCell(
+                    Text('Crop Status', style: TextStyle(color: onSurface)),
+                  ),
+                  DataCell(
+                    Text('Healthy', style: TextStyle(color: onSurface)),
+                  ),
+                ],
+              ),
+              DataRow(
+                cells: [
+                  DataCell(
+                    Text(
+                      'Monitoring Schedule',
+                      style: TextStyle(color: onSurface),
+                    ),
+                  ),
+                  DataCell(
+                    Text('Every Monday', style: TextStyle(color: onSurface)),
+                  ),
                 ],
               ),
             ];
@@ -887,32 +1582,71 @@ class _UserDetailsPageState extends State<_UserDetailsPage> {
               accentColor: const Color(0xFF4D7C0F),
               child: _buildTableShell(
                 child: DataTable(
-                  columns: const [
-                    DataColumn(label: Text('Information')),
-                    DataColumn(label: Text('Details')),
+                  columns: [
+                    DataColumn(
+                      label: Text(
+                        'Information',
+                        style: TextStyle(color: onSurfaceVariant),
+                      ),
+                    ),
+                    DataColumn(
+                      label: Text(
+                        'Details',
+                        style: TextStyle(color: onSurfaceVariant),
+                      ),
+                    ),
                   ],
+                  dataTextStyle: TextStyle(color: onSurface),
+                  headingTextStyle: TextStyle(color: onSurfaceVariant),
                   rows: plantInfoRows,
                 ),
               ),
             );
 
-            const aquacultureHarvestRows = [
+            final aquacultureHarvestRows = [
               DataRow(
                 cells: [
-                  DataCell(Text('Total Fish Harvested')),
-                  DataCell(Text('45')),
+                  DataCell(
+                    Text(
+                      'Total Fish Harvested',
+                      style: TextStyle(color: onSurface),
+                    ),
+                  ),
+                  DataCell(
+                    Text(
+                      _formatValue(harvestTotals['total_fish_harvested']),
+                      style: TextStyle(color: onSurface),
+                    ),
+                  ),
                 ],
               ),
               DataRow(
                 cells: [
-                  DataCell(Text('Average Fish Size')),
-                  DataCell(Text('Big')),
+                  DataCell(
+                    Text(
+                      'Average Fish Size',
+                      style: TextStyle(color: onSurface),
+                    ),
+                  ),
+                  DataCell(
+                    Text(
+                      _formatValue(harvestTotals['average_fish_size']),
+                      style: TextStyle(color: onSurface),
+                    ),
+                  ),
                 ],
               ),
               DataRow(
                 cells: [
-                  DataCell(Text('Survival Rate')),
-                  DataCell(Text('90.0%')),
+                  DataCell(
+                    Text('Survival Rate', style: TextStyle(color: onSurface)),
+                  ),
+                  DataCell(
+                    Text(
+                      _formatValue(harvestTotals['survival_rate']),
+                      style: TextStyle(color: onSurface),
+                    ),
+                  ),
                 ],
               ),
             ];
@@ -923,32 +1657,69 @@ class _UserDetailsPageState extends State<_UserDetailsPage> {
               accentColor: const Color(0xFF0C4A6E),
               child: _buildTableShell(
                 child: DataTable(
-                  columns: const [
-                    DataColumn(label: Text('Information')),
-                    DataColumn(label: Text('Details')),
+                  columns: [
+                    DataColumn(
+                      label: Text(
+                        'Information',
+                        style: TextStyle(color: onSurfaceVariant),
+                      ),
+                    ),
+                    DataColumn(
+                      label: Text(
+                        'Details',
+                        style: TextStyle(color: onSurfaceVariant),
+                      ),
+                    ),
                   ],
+                  dataTextStyle: TextStyle(color: onSurface),
+                  headingTextStyle: TextStyle(color: onSurfaceVariant),
                   rows: aquacultureHarvestRows,
                 ),
               ),
             );
 
-            const plantHarvestRows = [
+            final plantHarvestRows = [
               DataRow(
                 cells: [
-                  DataCell(Text('Total Number of Plant Batches')),
-                  DataCell(Text('5')),
+                  DataCell(
+                    Text(
+                      'Total Number of Plant Batches',
+                      style: TextStyle(color: onSurface),
+                    ),
+                  ),
+                  DataCell(Text('5', style: TextStyle(color: onSurface))),
                 ],
               ),
               DataRow(
                 cells: [
-                  DataCell(Text('Total Plants Harvested')),
-                  DataCell(Text('150')),
+                  DataCell(
+                    Text(
+                      'Total Plants Harvested',
+                      style: TextStyle(color: onSurface),
+                    ),
+                  ),
+                  DataCell(
+                    Text(
+                      _formatValue(harvestTotals['total_plants_harvested']),
+                      style: TextStyle(color: onSurface),
+                    ),
+                  ),
                 ],
               ),
               DataRow(
                 cells: [
-                  DataCell(Text('Average Yield Per Batch')),
-                  DataCell(Text('30 plants')),
+                  DataCell(
+                    Text(
+                      'Average Yield Per Batch',
+                      style: TextStyle(color: onSurface),
+                    ),
+                  ),
+                  DataCell(
+                    Text(
+                      _formatValue(harvestTotals['average_yield_per_batch']),
+                      style: TextStyle(color: onSurface),
+                    ),
+                  ),
                 ],
               ),
             ];
@@ -959,10 +1730,22 @@ class _UserDetailsPageState extends State<_UserDetailsPage> {
               accentColor: const Color(0xFF3F6212),
               child: _buildTableShell(
                 child: DataTable(
-                  columns: const [
-                    DataColumn(label: Text('Information')),
-                    DataColumn(label: Text('Details')),
+                  columns: [
+                    DataColumn(
+                      label: Text(
+                        'Information',
+                        style: TextStyle(color: onSurfaceVariant),
+                      ),
+                    ),
+                    DataColumn(
+                      label: Text(
+                        'Details',
+                        style: TextStyle(color: onSurfaceVariant),
+                      ),
+                    ),
                   ],
+                  dataTextStyle: TextStyle(color: onSurface),
+                  headingTextStyle: TextStyle(color: onSurfaceVariant),
                   rows: plantHarvestRows,
                 ),
               ),
@@ -974,6 +1757,15 @@ class _UserDetailsPageState extends State<_UserDetailsPage> {
               accentColor: const Color(0xFFB45309),
               child: _UserHistoryTable(userId: widget.userId),
             );
+            final growthProgressLogsCard = _buildSectionCard(
+              context: context,
+              title: 'Growth Progress Logs',
+              accentColor: const Color(0xFF7C3AED),
+              child: _UserWeeklyLogsTable(
+                userDocId: widget.userDocId,
+                systemId: selectedSystem?.id ?? '',
+              ),
+            );
 
             return LayoutBuilder(
               builder: (context, constraints) {
@@ -984,6 +1776,35 @@ class _UserDetailsPageState extends State<_UserDetailsPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      if (systems.length > 1)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 16),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: SizedBox(
+                              width: 260,
+                              child: DropdownButtonFormField<String>(
+                                value: selectedSystem?.id,
+                                decoration: const InputDecoration(
+                                  labelText: 'System',
+                                  border: OutlineInputBorder(),
+                                ),
+                                items: systems
+                                    .map(
+                                      (system) => DropdownMenuItem<String>(
+                                        value: system.id,
+                                        child: Text(systemLabel(system)),
+                                      ),
+                                    )
+                                    .toList(),
+                                onChanged: (value) {
+                                  if (value == null) return;
+                                  setState(() => _selectedSystemId = value);
+                                },
+                              ),
+                            ),
+                          ),
+                        ),
                       if (showSideBySide)
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1040,6 +1861,8 @@ class _UserDetailsPageState extends State<_UserDetailsPage> {
                         plantHarvestCard,
                       ],
                       const SizedBox(height: 16),
+                      growthProgressLogsCard,
+                      const SizedBox(height: 16),
                       _buildSectionCard(
                         context: context,
                         title: 'Support Tickets',
@@ -1055,9 +1878,11 @@ class _UserDetailsPageState extends State<_UserDetailsPage> {
               },
             );
           },
-        ),
-      ),
-    );
+        );
+      },
+    ),
+  ),
+);
   }
 }
 
@@ -1074,6 +1899,7 @@ class _UserTicketsTable extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
       stream: FirebaseFirestore.instance
           .collection('support_tickets')
@@ -1103,25 +1929,36 @@ class _UserTicketsTable extends StatelessWidget {
         return SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: DataTable(
-            columns: const [
-              DataColumn(label: Text('Ticket ID')),
-              DataColumn(label: Text('Subject')),
-              DataColumn(label: Text('Status')),
-              DataColumn(label: Text('Created At')),
+            columns: [
+              DataColumn(
+                label: Text('Ticket ID', style: TextStyle(color: scheme.onSurfaceVariant)),
+              ),
+              DataColumn(
+                label: Text('Subject', style: TextStyle(color: scheme.onSurfaceVariant)),
+              ),
+              DataColumn(
+                label: Text('Status', style: TextStyle(color: scheme.onSurfaceVariant)),
+              ),
+              DataColumn(
+                label: Text('Created At', style: TextStyle(color: scheme.onSurfaceVariant)),
+              ),
             ],
+            dataTextStyle: TextStyle(color: scheme.onSurface),
+            headingTextStyle: TextStyle(color: scheme.onSurfaceVariant),
             rows: docs.map((doc) {
               final data = doc.data();
               final createdAt = data['created_at'];
               return DataRow(
                 cells: [
-                  DataCell(Text(doc.id)),
-                  DataCell(Text(_safe(data['subject']))),
-                  DataCell(Text(_safe(data['status']))),
+                  DataCell(Text(doc.id, style: TextStyle(color: scheme.onSurface))),
+                  DataCell(Text(_safe(data['subject']), style: TextStyle(color: scheme.onSurface))),
+                  DataCell(Text(_safe(data['status']), style: TextStyle(color: scheme.onSurface))),
                   DataCell(
                     Text(
                       createdAt is Timestamp
                           ? createdAt.toDate().toString()
                           : _safe(createdAt),
+                      style: TextStyle(color: scheme.onSurface),
                     ),
                   ),
                 ],
@@ -1175,6 +2012,7 @@ class _UserHistoryTable extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final numericUserId = int.tryParse(userId);
     final notificationsStream = numericUserId != null
         ? FirebaseFirestore.instance
@@ -1225,20 +2063,145 @@ class _UserHistoryTable extends StatelessWidget {
         return SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: DataTable(
-            columns: const [
-              DataColumn(label: Text('Date & Time')),
-              DataColumn(label: Text('Event')),
-              DataColumn(label: Text('User ID')),
+            columns: [
+              DataColumn(
+                label: Text('Date & Time', style: TextStyle(color: scheme.onSurfaceVariant)),
+              ),
+              DataColumn(
+                label: Text('Event', style: TextStyle(color: scheme.onSurfaceVariant)),
+              ),
+              DataColumn(
+                label: Text('User ID', style: TextStyle(color: scheme.onSurfaceVariant)),
+              ),
             ],
+            dataTextStyle: TextStyle(color: scheme.onSurface),
+            headingTextStyle: TextStyle(color: scheme.onSurfaceVariant),
             rows: docs.map((doc) {
               final data = doc.data();
               final when =
                   data['created_at'] ?? data['timestamp'] ?? data['date'];
               return DataRow(
                 cells: [
-                  DataCell(Text(_formatDateTime(when))),
-                  DataCell(Text(_notificationEvent(data))),
-                  DataCell(Text(_safeText(data['user_id'], fallback: userId))),
+                  DataCell(
+                    Text(_formatDateTime(when), style: TextStyle(color: scheme.onSurface)),
+                  ),
+                  DataCell(
+                    Text(_notificationEvent(data), style: TextStyle(color: scheme.onSurface)),
+                  ),
+                  DataCell(
+                    Text(_safeText(data['user_id'], fallback: userId), style: TextStyle(color: scheme.onSurface)),
+                  ),
+                ],
+              );
+            }).toList(),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _UserWeeklyLogsTable extends StatelessWidget {
+  final String userDocId;
+  final String systemId;
+
+  const _UserWeeklyLogsTable({
+    required this.userDocId,
+    required this.systemId,
+  });
+
+  String _safe(dynamic value, {String fallback = '-'}) {
+    final text = value?.toString().trim() ?? '';
+    return text.isEmpty ? fallback : text;
+  }
+
+  DateTime? _asDateTime(dynamic value) {
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+    if (value is String) return DateTime.tryParse(value);
+    return null;
+  }
+
+  String _formatDate(dynamic value) {
+    final dt = _asDateTime(value);
+    if (dt == null) return _safe(value);
+    final local = dt.toLocal();
+    final mm = local.month.toString().padLeft(2, '0');
+    final dd = local.day.toString().padLeft(2, '0');
+    return '${local.year}-$mm-$dd';
+  }
+
+  String _formatNumber(dynamic value) {
+    if (value == null) return '-';
+    if (value is num) return value.toStringAsFixed(value % 1 == 0 ? 0 : 1);
+    final text = value.toString().trim();
+    return text.isEmpty ? '-' : text;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    if (systemId.trim().isEmpty) {
+      return const Text('No system selected for weekly logs.');
+    }
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection('user')
+          .doc(userDocId)
+          .collection('systems')
+          .doc(systemId)
+          .collection('weekly_logs')
+          .orderBy('timestamp', descending: true)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Text(
+            'Error loading weekly logs: ${snapshot.error}',
+            style: TextStyle(color: Theme.of(context).colorScheme.error),
+          );
+        }
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 12),
+            child: CircularProgressIndicator(),
+          );
+        }
+
+        final docs = snapshot.data?.docs ?? [];
+        if (docs.isEmpty) {
+          return const Text('No weekly growth progress logs found.');
+        }
+
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: DataTable(
+            columns: [
+              DataColumn(label: Text('Date', style: TextStyle(color: scheme.onSurfaceVariant))),
+              DataColumn(label: Text('Fish Size (cm)', style: TextStyle(color: scheme.onSurfaceVariant))),
+              DataColumn(label: Text('Plant Height (cm)', style: TextStyle(color: scheme.onSurfaceVariant))),
+              DataColumn(label: Text('Health Status', style: TextStyle(color: scheme.onSurfaceVariant))),
+              DataColumn(label: Text('Notes', style: TextStyle(color: scheme.onSurfaceVariant))),
+            ],
+            dataTextStyle: TextStyle(color: scheme.onSurface),
+            headingTextStyle: TextStyle(color: scheme.onSurfaceVariant),
+            rows: docs.map((doc) {
+              final data = doc.data();
+              return DataRow(
+                cells: [
+                  DataCell(Text(_formatDate(data['timestamp']), style: TextStyle(color: scheme.onSurface))),
+                  DataCell(Text(_formatNumber(data['fish_size_cm']), style: TextStyle(color: scheme.onSurface))),
+                  DataCell(Text(_formatNumber(data['plant_height_cm']), style: TextStyle(color: scheme.onSurface))),
+                  DataCell(Text(_safe(data['health_status']), style: TextStyle(color: scheme.onSurface))),
+                  DataCell(
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 320),
+                      child: Text(
+                        _safe(data['notes']),
+                        style: TextStyle(color: scheme.onSurface),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
                 ],
               );
             }).toList(),
@@ -1266,9 +2229,49 @@ class _UserDialogState extends State<_UserDialog> {
   late TextEditingController _emailCtrl;
   late TextEditingController _phoneNumberCtrl;
   late TextEditingController _addressCtrl;
+  late String _statusValue;
   bool _isSaving = false;
 
   bool get _isEditing => widget.document != null;
+
+  Future<int> _getNextNumericUserId() async {
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('user')
+          .orderBy('user_id', descending: true)
+          .limit(1)
+          .get();
+
+      if (snapshot.docs.isEmpty) return 1;
+
+      final value = snapshot.docs.first.data()['user_id'];
+      if (value is num) return value.toInt() + 1;
+    } on FirebaseException catch (e) {
+      throw FirebaseException(
+        plugin: e.plugin,
+        code: e.code,
+        message: 'Failed to determine the next user ID.',
+      );
+    }
+
+    try {
+      final numericSnapshot = await FirebaseFirestore.instance
+          .collection('user')
+          .where('user_id', isGreaterThanOrEqualTo: 0)
+          .orderBy('user_id', descending: true)
+          .limit(1)
+          .get();
+
+      if (numericSnapshot.docs.isEmpty) return 1;
+
+      final value = numericSnapshot.docs.first.data()['user_id'];
+      if (value is num) return value.toInt() + 1;
+    } on FirebaseException {
+      return 1;
+    }
+
+    return 1;
+  }
 
   @override
   void initState() {
@@ -1287,6 +2290,8 @@ class _UserDialogState extends State<_UserDialog> {
     _addressCtrl = TextEditingController(
       text: data['address']?.toString() ?? '',
     );
+    final statusText = data['status']?.toString().trim().toLowerCase();
+    _statusValue = (statusText == 'inactive') ? 'inactive' : 'active';
   }
 
   @override
@@ -1301,10 +2306,9 @@ class _UserDialogState extends State<_UserDialog> {
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
-    setState(() => _isSaving = true);
-
     try {
       if (_isEditing) {
+        setState(() => _isSaving = true);
         await widget.document!.reference.update({
           'first_name': _firstNameCtrl.text.trim(),
           'last_name': _lastNameCtrl.text.trim(),
@@ -1312,10 +2316,21 @@ class _UserDialogState extends State<_UserDialog> {
           'phone_num': _phoneNumberCtrl.text.trim(),
           'address': _addressCtrl.text.trim(),
           'role': 'grower',
+          'status': _statusValue,
           'updated_at': FieldValue.serverTimestamp(),
         });
       } else {
+        final nextUserId = await _getNextNumericUserId();
+        if (nextUserId <= 0) {
+          throw FirebaseException(
+            plugin: 'cloud_firestore',
+            code: 'invalid-argument',
+            message: 'Invalid next user ID. Creation aborted.',
+          );
+        }
+        setState(() => _isSaving = true);
         final result = await UserAccountService.createManagedUser(
+          userId: nextUserId,
           firstName: _firstNameCtrl.text,
           lastName: _lastNameCtrl.text,
           email: _emailCtrl.text,
@@ -1421,6 +2436,26 @@ class _UserDialogState extends State<_UserDialog> {
                     value == null || value.trim().isEmpty ? 'Required' : null,
                 maxLines: 2,
               ),
+              if (_isEditing) ...[
+                const SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  value: _statusValue,
+                  decoration: const InputDecoration(
+                    labelText: 'Status',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 'active', child: Text('Active')),
+                    DropdownMenuItem(value: 'inactive', child: Text('Inactive')),
+                  ],
+                  onChanged: _isSaving
+                      ? null
+                      : (value) {
+                          if (value == null) return;
+                          setState(() => _statusValue = value);
+                        },
+                ),
+              ],
               const SizedBox(height: 16),
               const SizedBox(height: 24),
               if (!_isEditing)
@@ -1439,11 +2474,20 @@ class _UserDialogState extends State<_UserDialog> {
                   const SizedBox(width: 12),
                   FilledButton(
                     onPressed: _isSaving ? null : _save,
-                    child: Text(
-                      _isSaving
-                          ? 'Saving...'
-                          : (_isEditing ? 'Update' : 'Create'),
-                    ),
+                    child: _isSaving
+                        ? const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              ),
+                              SizedBox(width: 8),
+                              Text('Saving...'),
+                            ],
+                          )
+                        : Text(_isEditing ? 'Update' : 'Create'),
                   ),
                 ],
               ),

@@ -2,9 +2,11 @@ import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_core/firebase_core.dart';
 
 import 'firebase_options.dart';
+import 'user_system.dart';
 
 class CreatedUserResult {
   final String uid;
@@ -30,28 +32,23 @@ class UserAccountService {
 
   static const List<String> roleCollectionsInPriority = [
     'admin',
-    'employee',
     'user',
   ];
 
   static String normalizeRole(String role) {
     final normalized = role.trim().toLowerCase();
     if (normalized == 'manager') return 'admin';
-    if (normalized == 'system support') return 'employee';
     if (normalized == 'user') return 'grower';
     return normalized;
   }
 
   static bool isAdminRole(String role) => normalizeRole(role) == 'admin';
 
-  static bool isEmployeeRole(String role) => normalizeRole(role) == 'employee';
-
   static bool isGrowerRole(String role) => normalizeRole(role) == 'grower';
 
   static String collectionForRole(String role) {
     final normalizedRole = normalizeRole(role);
     if (normalizedRole == 'admin') return 'admin';
-    if (normalizedRole == 'employee') return 'employee';
     return 'user';
   }
 
@@ -82,15 +79,24 @@ class UserAccountService {
     required String lastName,
     required String email,
     required String role,
+    required int userId,
     String phoneNumber = '',
     String address = '',
     String status = 'active',
   }) async {
+    if (userId <= 0) {
+      throw FirebaseException(
+        plugin: 'cloud_firestore',
+        code: 'invalid-argument',
+        message: 'Invalid user ID. A positive integer is required.',
+      );
+    }
     final normalizedEmail = email.trim().toLowerCase();
     final normalizedRole = normalizeRole(role);
     final normalizedStatus = status.trim().toLowerCase();
     final temporaryPassword = generateSecurePassword();
     final appName = 'secondary-${DateTime.now().microsecondsSinceEpoch}';
+    final numericUserId = int.parse(userId.toString());
 
     final secondaryApp = await Firebase.initializeApp(
       name: appName,
@@ -103,28 +109,38 @@ class UserAccountService {
         email: normalizedEmail,
         password: temporaryPassword,
       );
-      final uid = credential.user!.uid;
-      final collection = collectionForRole(normalizedRole);
+      final createdUser = credential.user!;
+      try {
+        final uid = createdUser.uid;
+        final collection = collectionForRole(normalizedRole);
+        await FirebaseFirestore.instance.collection(collection).doc(uid).set({
+          'user_id': numericUserId,
+          'first_name': firstName.trim(),
+          'last_name': lastName.trim(),
+          'email': normalizedEmail,
+          'phone_num': phoneNumber.trim(),
+          'address': address.trim(),
+          'role': normalizedRole,
+          'status': normalizedStatus,
+          'updated_at': FieldValue.serverTimestamp(),
+          'created_at': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
 
-      await FirebaseFirestore.instance.collection(collection).doc(uid).set({
-        'user_id': uid,
-        'first_name': firstName.trim(),
-        'last_name': lastName.trim(),
-        'email': normalizedEmail,
-        'phone_num': phoneNumber.trim(),
-        'address': address.trim(),
-        'role': normalizedRole,
-        'status': normalizedStatus,
-        'updated_at': FieldValue.serverTimestamp(),
-        'created_at': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+        await FirebaseAuth.instance.sendPasswordResetEmail(
+          email: normalizedEmail,
+        );
 
-      await FirebaseAuth.instance.sendPasswordResetEmail(
-        email: normalizedEmail,
-      );
-      await secondaryAuth.signOut();
-
-      return CreatedUserResult(uid: uid, temporaryPassword: temporaryPassword);
+        return CreatedUserResult(
+          uid: uid,
+          temporaryPassword: temporaryPassword,
+        );
+      } on Object {
+        // Keep Auth and Firestore in sync if profile creation fails.
+        await createdUser.delete();
+        rethrow;
+      } finally {
+        await secondaryAuth.signOut();
+      }
     } finally {
       await secondaryApp.delete();
     }
@@ -195,6 +211,7 @@ class UserAccountService {
   static Future<String?> resolveEmailForIdentifier(String identifier) async {
     final normalized = identifier.trim().toLowerCase();
     if (normalized.isEmpty) return null;
+    final numericId = int.tryParse(normalized);
 
     for (final collection in roleCollectionsInPriority) {
       try {
@@ -228,7 +245,7 @@ class UserAccountService {
         // 3) Numeric/logical user_id lookup.
         final byUserId = await FirebaseFirestore.instance
             .collection(collection)
-            .where('user_id', isEqualTo: normalized)
+            .where('user_id', isEqualTo: numericId ?? normalized)
             .limit(1)
             .get();
         if (byUserId.docs.isNotEmpty) {
@@ -263,4 +280,84 @@ class UserAccountService {
     // Backward-compatible alias.
     return resolveEmailForIdentifier(username);
   }
+
+  static Future<void> deleteManagedUser({
+    required String uid,
+    required String collection,
+  }) async {
+    final normalizedUid = uid.trim();
+    final normalizedCollection = collection.trim().toLowerCase();
+    if (normalizedUid.isEmpty) {
+      throw FirebaseException(
+        plugin: 'cloud_functions',
+        code: 'invalid-argument',
+        message: 'Missing UID for deletion.',
+      );
+    }
+    if (normalizedCollection.isEmpty) {
+      throw FirebaseException(
+        plugin: 'cloud_functions',
+        code: 'invalid-argument',
+        message: 'Missing collection for deletion.',
+      );
+    }
+
+    final callable = FirebaseFunctions.instanceFor(
+      region: 'us-central1',
+    ).httpsCallable('deleteManagedUser');
+
+    await callable.call(<String, dynamic>{
+      'uid': normalizedUid,
+      'collection': normalizedCollection,
+    });
+  }
+
+  static Future<void> deleteUserAccount({required String uid}) async {
+    final normalizedUid = uid.trim();
+    if (normalizedUid.isEmpty) {
+      throw FirebaseException(
+        plugin: 'cloud_functions',
+        code: 'invalid-argument',
+        message: 'Missing UID for deletion.',
+      );
+    }
+
+    final callable = FirebaseFunctions.instanceFor(
+      region: 'us-central1',
+    ).httpsCallable('deleteUserAccount');
+
+    await callable.call(<String, dynamic>{
+      'uid': normalizedUid,
+    });
+  }
+
+  static Stream<List<UserSystem>> watchUserSystems(String uid) {
+    final normalizedUid = uid.trim();
+    if (normalizedUid.isEmpty) {
+      return const Stream<List<UserSystem>>.empty();
+    }
+    return FirebaseFirestore.instance
+        .collection('user')
+        .doc(normalizedUid)
+        .collection('systems')
+        .snapshots()
+        .map(
+          (snapshot) =>
+              snapshot.docs.map(UserSystem.fromFirestore).toList(),
+        );
+  }
+
+  static Future<void> updateSystemData(
+    String uid,
+    String systemId,
+    Map<String, dynamic> data,
+  ) {
+    return FirebaseFirestore.instance
+        .collection('user')
+        .doc(uid)
+        .collection('systems')
+        .doc(systemId)
+        .update(data);
+  }
+
 }
