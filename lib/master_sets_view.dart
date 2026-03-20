@@ -952,11 +952,14 @@ Future<void> _showEditPlantDialog(
       ? typeCtrl.text.trim()
       : null;
   final descriptionCtrl = TextEditingController(text: _valueText(data['description']));
-  final idealDaysToHarvestCtrl = TextEditingController(
-    text: _valueText(data['ideal_days_to_harvest']),
+  final daysToFirstHarvestCtrl = TextEditingController(
+    text: _valueText(data['days_to_first_harvest']),
   );
-  final numberOfBatchesCtrl = TextEditingController(
-    text: _valueText(data['number_of_batches']),
+  final daysBetweenBatchesCtrl = TextEditingController(
+    text: _valueText(data['days_between_batches']),
+  );
+  final maxBatchesCtrl = TextEditingController(
+    text: _valueText(data['max_batches']),
   );
 
   String? requiredText(String? value) {
@@ -993,19 +996,19 @@ Future<void> _showEditPlantDialog(
                 'name': nameCtrl.text.trim(),
                 'type': selectedType?.trim() ?? '',
                 'description': descriptionCtrl.text.trim(),
-                'ideal_days_to_harvest': parseOptionalInt(
-                  idealDaysToHarvestCtrl,
+                'days_to_first_harvest': parseOptionalInt(daysToFirstHarvestCtrl),
+                'days_between_batches': parseOptionalInt(
+                  daysBetweenBatchesCtrl,
                 ),
-                'number_of_batches': parseOptionalInt(numberOfBatchesCtrl),
+                'max_batches': parseOptionalInt(maxBatchesCtrl),
                 'updated_at': FieldValue.serverTimestamp(),
               });
 
               final toAdd = selectedCompatibleFish.difference(originalCompatibleFish);
               final toRemove = originalCompatibleFish.difference(selectedCompatibleFish);
               final defaultIdealDays =
-                  parseOptionalInt(idealDaysToHarvestCtrl) ?? 0;
-              final defaultBatches =
-                  parseOptionalInt(numberOfBatchesCtrl) ?? 0;
+                  parseOptionalInt(daysToFirstHarvestCtrl) ?? 0;
+              final defaultBatches = parseOptionalInt(maxBatchesCtrl) ?? 0;
 
               Future<void> upsertPlantOverrideForFish(String fishDocId) async {
                 final fishRef = FirebaseFirestore.instance
@@ -1091,8 +1094,9 @@ Future<void> _showEditPlantDialog(
               nameCtrl.dispose();
               typeCtrl.dispose();
               descriptionCtrl.dispose();
-              idealDaysToHarvestCtrl.dispose();
-              numberOfBatchesCtrl.dispose();
+              daysToFirstHarvestCtrl.dispose();
+              daysBetweenBatchesCtrl.dispose();
+              maxBatchesCtrl.dispose();
             }
           }
 
@@ -1147,6 +1151,44 @@ Future<void> _showEditPlantDialog(
                           border: OutlineInputBorder(),
                         ),
                         validator: requiredText,
+                      ),
+                      const SizedBox(height: 12),
+                      const Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'Growth Parameters',
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextFormField(
+                        controller: daysToFirstHarvestCtrl,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Days to First Harvest',
+                          border: OutlineInputBorder(),
+                        ),
+                        validator: optionalInt,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: daysBetweenBatchesCtrl,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Days Between Batches',
+                          border: OutlineInputBorder(),
+                        ),
+                        validator: optionalInt,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: maxBatchesCtrl,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Max Batches',
+                          border: OutlineInputBorder(),
+                        ),
+                        validator: optionalInt,
                       ),
                       const SizedBox(height: 12),
                       const Align(
@@ -2474,8 +2516,9 @@ class _AddPlantDialogState extends State<_AddPlantDialog> {
   final _formKey = GlobalKey<FormState>();
   final _nameCtrl = TextEditingController();
   final _descriptionCtrl = TextEditingController();
-  final _idealDaysToHarvestCtrl = TextEditingController();
-  final _numberOfBatchesCtrl = TextEditingController();
+  final _daysToFirstHarvestCtrl = TextEditingController();
+  final _daysBetweenBatchesCtrl = TextEditingController();
+  final _maxBatchesCtrl = TextEditingController();
 
   List<_EntityOption> _fishOptions = <_EntityOption>[];
   final Set<String> _selectedFishIds = <String>{};
@@ -2493,8 +2536,9 @@ class _AddPlantDialogState extends State<_AddPlantDialog> {
   void dispose() {
     _nameCtrl.dispose();
     _descriptionCtrl.dispose();
-    _idealDaysToHarvestCtrl.dispose();
-    _numberOfBatchesCtrl.dispose();
+    _daysToFirstHarvestCtrl.dispose();
+    _daysBetweenBatchesCtrl.dispose();
+    _maxBatchesCtrl.dispose();
     super.dispose();
   }
 
@@ -2625,8 +2669,9 @@ class _AddPlantDialogState extends State<_AddPlantDialog> {
         'name': _nameCtrl.text.trim(),
         'type': _selectedType ?? '',
         'description': _descriptionCtrl.text.trim(),
-        'ideal_days_to_harvest': _parseOptionalInt(_idealDaysToHarvestCtrl),
-        'number_of_batches': _parseOptionalInt(_numberOfBatchesCtrl),
+        'days_to_first_harvest': _parseOptionalInt(_daysToFirstHarvestCtrl),
+        'days_between_batches': _parseOptionalInt(_daysBetweenBatchesCtrl),
+        'max_batches': _parseOptionalInt(_maxBatchesCtrl),
         'compatible_fish': _selectedFishIds.toList(),
         'created_at': FieldValue.serverTimestamp(),
         'updated_at': FieldValue.serverTimestamp(),
@@ -2634,8 +2679,8 @@ class _AddPlantDialogState extends State<_AddPlantDialog> {
 
       await batch.commit();
 
-      final defaultIdealDays = _parseOptionalInt(_idealDaysToHarvestCtrl) ?? 0;
-      final defaultBatches = _parseOptionalInt(_numberOfBatchesCtrl) ?? 0;
+      final defaultIdealDays = _parseOptionalInt(_daysToFirstHarvestCtrl) ?? 0;
+      final defaultBatches = _parseOptionalInt(_maxBatchesCtrl) ?? 0;
 
       for (final fishId in _selectedFishIds) {
         final fishRef = firestore.collection('aquaculture').doc(fishId);
@@ -2742,20 +2787,30 @@ class _AddPlantDialogState extends State<_AddPlantDialog> {
                 ),
                 const SizedBox(height: 8),
                 TextFormField(
-                  controller: _idealDaysToHarvestCtrl,
+                  controller: _daysToFirstHarvestCtrl,
                   keyboardType: TextInputType.number,
                   decoration: const InputDecoration(
-                    labelText: 'Ideal Days to Harvest',
+                    labelText: 'Days to First Harvest',
                     border: OutlineInputBorder(),
                   ),
                   validator: _optionalInt,
                 ),
                 const SizedBox(height: 12),
                 TextFormField(
-                  controller: _numberOfBatchesCtrl,
+                  controller: _daysBetweenBatchesCtrl,
                   keyboardType: TextInputType.number,
                   decoration: const InputDecoration(
-                    labelText: 'Number of Batches',
+                    labelText: 'Days Between Batches',
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: _optionalInt,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _maxBatchesCtrl,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Max Batches',
                     border: OutlineInputBorder(),
                   ),
                   validator: _optionalInt,

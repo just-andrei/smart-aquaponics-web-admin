@@ -657,7 +657,7 @@ class _LandingPageState extends State<LandingPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'About LYTRA',
+                'About the System',
                 style: TextStyle(
                   fontSize: titleSize,
                   fontWeight: FontWeight.bold,
@@ -666,7 +666,7 @@ class _LandingPageState extends State<LandingPage> {
               ),
               const SizedBox(height: 22),
               Text(
-                'LYTRA (Living, Yield, Technology-driven, Renewable Aquaponics) is a Hybrid Power-Driven Aquaponics System with IoT Environmental Control designed to provide smart and sustainable food production solutions.',
+                'The Smart Aquaponics system is a Hybrid Power-Driven Aquaponics System with IoT Environmental Control designed to provide smart and sustainable food production solutions.',
                 style: TextStyle(
                   fontSize: bodySize,
                   color: Colors.white70,
@@ -675,7 +675,7 @@ class _LandingPageState extends State<LandingPage> {
               ),
               const SizedBox(height: 16),
               Text(
-                'Our system integrates aquaculture and hydroponics in a closed-loop environment while using IoT-based monitoring and automation to maintain optimal conditions for fish and plants. Powered by a hybrid combination of electricity and solar energy, LYTRA ensures reliable, efficient, and climate-resilient agricultural production for communities, fisherfolks, and small-scale farmers.',
+                'Our system integrates aquaculture and hydroponics in a closed-loop environment while using IoT-based monitoring and automation to maintain optimal conditions for fish and plants. Powered by a hybrid combination of electricity and solar energy, the Smart Aquaponics system ensures reliable, efficient, and climate-resilient agricultural production for communities, fisherfolks, and small-scale farmers.',
                 style: TextStyle(
                   fontSize: bodySize,
                   color: Colors.white70,
@@ -795,7 +795,7 @@ class _LandingPageState extends State<LandingPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'LYTRA',
+                      'Smart Aquaponics',
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: bodySize + 5,
@@ -805,7 +805,7 @@ class _LandingPageState extends State<LandingPage> {
                     ),
                     const SizedBox(height: 10),
                     Text(
-                      'Living, Yield, Technology-driven, Renewable Aquaponics',
+                      'Smart, sustainable, and technology-driven aquaponics.',
                       style: TextStyle(
                         color: Colors.white70,
                         fontSize: bodySize - 1,
@@ -862,7 +862,7 @@ class _LandingPageState extends State<LandingPage> {
                       ),
                     ),
                     const SizedBox(height: 10),
-                    _footerInfo(Icons.email_outlined, 'LYTRAquponics@gmail.com', bodySize),
+                    _footerInfo(Icons.email_outlined, 'info@smartaquaponics.com', bodySize),
                     const SizedBox(height: 8),
                     _footerInfo(Icons.phone_outlined, '+63 912 345 6789', bodySize),
                     const SizedBox(height: 8),
@@ -904,7 +904,7 @@ class _LandingPageState extends State<LandingPage> {
                 color: Colors.white.withOpacity(0.14),
               ),
               Text(
-                'Copyright 2026 LYTRA. All rights reserved.',
+                'Copyright 2026 Smart Aquaponics. All rights reserved.',
                 style: TextStyle(
                   color: isNarrow ? Colors.white54 : Colors.white70,
                   fontSize: bodySize,

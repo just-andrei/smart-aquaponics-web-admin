@@ -75,7 +75,7 @@ class AboutPage extends StatelessWidget {
                     ),
 
                     Text(
-                      "About LYTRA",
+                      "About Us",
                       style: TextStyle(
                         fontSize: brandFontSize,
                         fontWeight: FontWeight.bold,
@@ -229,62 +229,7 @@ class AboutPage extends StatelessWidget {
                                 SizedBox(height: 30),
 
                                 Text(
-                                  "LYTRA Acronym Meaning",
-                                  style: TextStyle(
-                                    fontSize: sectionTitleFontSize,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white,
-                                  ),
-                                ),
-
-                                SizedBox(height: 12),
-
-
-                                Text(
-                                  "L - Living / Low-Energy / Lifecycle",
-                                  style: TextStyle(
-                                    fontSize: bodyFontSize,
-                                    color: Colors.white70,
-                                    height: 1.6,
-                                  ),
-                                ),
-                                Text(
-                                  "Y - Yield / Year-round",
-                                  style: TextStyle(
-                                    fontSize: bodyFontSize,
-                                    color: Colors.white70,
-                                    height: 1.6,
-                                  ),
-                                ),
-                                Text(
-                                  "T - Technology-driven / Telemetry-based",
-                                  style: TextStyle(
-                                    fontSize: bodyFontSize,
-                                    color: Colors.white70,
-                                    height: 1.6,
-                                  ),
-                                ),
-                                Text(
-                                  "R - Renewable / Regulated / Resilient",
-                                  style: TextStyle(
-                                    fontSize: bodyFontSize,
-                                    color: Colors.white70,
-                                    height: 1.6,
-                                  ),
-                                ),
-                                Text(
-                                  "A - Aquaponics / Automation / Adaptive",
-                                  style: TextStyle(
-                                    fontSize: bodyFontSize,
-                                    color: Colors.white70,
-                                    height: 1.6,
-                                  ),
-                                ),
-
-                                SizedBox(height: 16),
-
-                                Text(
-                                  "The name LYTRA represents our commitment to developing a smart, sustainable, and technology-driven aquaponics system that promotes efficient food production all year round.",
+                                  "The Smart Aquaponics system reflects our commitment to developing a smart, sustainable, and technology-driven aquaponics solution that promotes efficient food production all year round.",
                                   style: TextStyle(
                                     fontSize: bodyFontSize,
                                     color: Colors.white70,

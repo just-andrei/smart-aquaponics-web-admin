@@ -199,7 +199,7 @@ class _InquirePageState extends State<InquirePage> {
                         ),
                       ),
                       Text(
-                        'Inquire with LYTRA',
+                        'Inquire',
                         style: TextStyle(
                           fontSize: brandFontSize,
                           fontWeight: FontWeight.bold,

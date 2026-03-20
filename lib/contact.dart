@@ -216,7 +216,7 @@ class _ContactPageState extends State<ContactPage> {
             const Icon(Icons.email, color: Colors.tealAccent),
             const SizedBox(width: 10),
             Text(
-              "LYTRAquponics@gmail.com",
+              "info@smartaquaponics.com",
               style: TextStyle(color: Colors.white70, fontSize: bodyFontSize),
             ),
           ],
