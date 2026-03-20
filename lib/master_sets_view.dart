@@ -2111,8 +2111,11 @@ class _AddFishDialogState extends State<_AddFishDialog> {
 
     try {
       final fishRef = FirebaseFirestore.instance.collection('aquaculture').doc();
+      final customFishId =
+          '${_nameCtrl.text.trim().toLowerCase().replaceAll(' ', '_')}_01';
       final selectedPlantIds = _plantOverrides.keys.toSet();
       await fishRef.set({
+        'fish_id': customFishId,
         'name': _nameCtrl.text.trim(),
         'type': _selectedType ?? '',
         'description': _descriptionCtrl.text.trim(),
@@ -2146,7 +2149,7 @@ class _AddFishDialogState extends State<_AddFishDialog> {
       for (final customId in selectedPlantIds) {
         final plantDocId = _plantCustomIdToDocId[customId] ?? customId;
         await FirebaseFirestore.instance.collection('plants').doc(plantDocId).update({
-          'compatible_fish': FieldValue.arrayUnion([fishRef.id]),
+          'compatible_fish': FieldValue.arrayUnion([customFishId]),
           'updated_at': FieldValue.serverTimestamp(),
         });
       }
@@ -2521,6 +2524,7 @@ class _AddPlantDialogState extends State<_AddPlantDialog> {
   final _maxBatchesCtrl = TextEditingController();
 
   List<_EntityOption> _fishOptions = <_EntityOption>[];
+  final Map<String, String> _fishCustomIdToDocId = <String, String>{};
   final Set<String> _selectedFishIds = <String>{};
   String? _selectedType = _plantTypeOptions.first;
   bool _loadingOptions = true;
@@ -2550,11 +2554,14 @@ class _AddPlantDialogState extends State<_AddPlantDialog> {
     try {
       final snapshot =
           await FirebaseFirestore.instance.collection('aquaculture').get();
+      _fishCustomIdToDocId.clear();
       final options = snapshot.docs.map((doc) {
         final data = doc.data();
+        final customId = _resolveAquacultureKey(doc.id, data);
+        _fishCustomIdToDocId[customId] = doc.id;
         return _EntityOption(
-          id: doc.id,
-          name: (data['name'] ?? doc.id).toString(),
+          id: customId,
+          name: (data['name'] ?? customId).toString(),
         );
       }).toList()
         ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
@@ -2664,8 +2671,11 @@ class _AddPlantDialogState extends State<_AddPlantDialog> {
       final firestore = FirebaseFirestore.instance;
       final plantRef = firestore.collection('plants').doc();
       final batch = firestore.batch();
+      final customPlantId =
+          '${_nameCtrl.text.trim().toLowerCase().replaceAll(' ', '_')}_01';
 
       batch.set(plantRef, {
+        'plant_id': customPlantId,
         'name': _nameCtrl.text.trim(),
         'type': _selectedType ?? '',
         'description': _descriptionCtrl.text.trim(),
@@ -2683,12 +2693,13 @@ class _AddPlantDialogState extends State<_AddPlantDialog> {
       final defaultBatches = _parseOptionalInt(_maxBatchesCtrl) ?? 0;
 
       for (final fishId in _selectedFishIds) {
-        final fishRef = firestore.collection('aquaculture').doc(fishId);
+        final fishDocId = _fishCustomIdToDocId[fishId] ?? fishId;
+        final fishRef = firestore.collection('aquaculture').doc(fishDocId);
         await firestore.runTransaction((tx) async {
           final fishSnap = await tx.get(fishRef);
           final fishData = fishSnap.data() ?? <String, dynamic>{};
           final overrides = _toPlantOverrides(fishData['compatible_plants']);
-          overrides[plantRef.id] = <String, int>{
+          overrides[customPlantId] = <String, int>{
             'ideal_days': defaultIdealDays,
             'batches': defaultBatches,
           };
