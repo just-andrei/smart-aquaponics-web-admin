@@ -1,14 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'app_theme_controller.dart';
 import 'admin_sidebar.dart';
 import 'navigation_provider.dart';
 import 'dashboard_view.dart';
 import 'user_management_view.dart';
 import 'support_tickets_view.dart';
 import 'master_sets_view.dart';
+import 'compatibility_assistant_view.dart';
 import 'user_account_service.dart';
 import 'login.dart';
-
+import 'aquaponics_colors.dart';
 
 class AdminDashboard extends StatefulWidget {
   final ThemeMode themeMode;
@@ -30,12 +32,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
   bool _isSidebarCollapsed = false;
 
   void _toggleTheme() {
-    final currentThemeMode = Theme.of(context).brightness == Brightness.dark
-        ? ThemeMode.dark
-        : ThemeMode.light;
-    widget.onThemeChanged(
-      currentThemeMode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark,
-    );
+    toggleAppTheme(Theme.of(context).brightness);
   }
 
   @override
@@ -78,8 +75,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
         PageRouteBuilder(
           transitionDuration: const Duration(milliseconds: 300),
           pageBuilder: (context, animation, secondaryAnimation) => LoginPage(
-            themeMode: widget.themeMode,
-            onThemeChanged: widget.onThemeChanged,
+            themeMode: appThemeMode.value,
+            onThemeChanged: setAppThemeMode,
           ),
           transitionsBuilder: (context, animation, secondaryAnimation, child) {
             return FadeTransition(
@@ -94,9 +91,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
       );
     } on FirebaseAuthException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message ?? 'Logout failed')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message ?? 'Logout failed')));
     }
   }
 
@@ -110,31 +107,37 @@ class _AdminDashboardState extends State<AdminDashboard> {
     final profile = profileRecord?.data;
     final fallbackRole = profileRecord == null
         ? ''
-        : (profileRecord.collection == 'user' ? 'grower' : profileRecord.collection);
+        : (profileRecord.collection == 'user'
+              ? 'grower'
+              : profileRecord.collection);
 
     final role = UserAccountService.normalizeRole(
       (profile?['role'] ?? fallbackRole).toString(),
     );
     final status = (profile?['status'] ?? 'active').toString().toLowerCase();
-    return _SessionAccess(
-      role: role,
-      status: status,
-    );
+    return _SessionAccess(role: role, status: status);
   }
 
   // Map to switch views based on selection
   Widget _getView(int index, String role) {
     switch (index) {
-      case 0: return const DashboardOverview();
-      case 1: return UserManagementView(
-        currentUserRole: role,
-        navigationProvider: _navigationProvider,
-        onLogout: _logoutAndGoToLogin,
-        onToggleTheme: _toggleTheme,
-      );
-      case 2: return MasterSetsView(userRole: role);
-      case 3: return const SupportTicketsView();
-      default: return const DashboardOverview();
+      case 0:
+        return const DashboardOverview();
+      case 1:
+        return UserManagementView(
+          currentUserRole: role,
+          navigationProvider: _navigationProvider,
+          onLogout: _logoutAndGoToLogin,
+          onToggleTheme: _toggleTheme,
+        );
+      case 2:
+        return MasterSetsView(userRole: role);
+      case 3:
+        return const SupportTicketsView();
+      case 4:
+        return const CompatibilityAssistantView();
+      default:
+        return const DashboardOverview();
     }
   }
 
@@ -151,11 +154,17 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
         if (accessSnapshot.hasError) {
           return Scaffold(
-            body: Center(child: Text('Failed to load user access: ${accessSnapshot.error}')),
+            body: Center(
+              child: Text(
+                'Failed to load user access: ${accessSnapshot.error}',
+              ),
+            ),
           );
         }
 
-        final access = accessSnapshot.data ?? const _SessionAccess(role: 'unknown', status: 'inactive');
+        final access =
+            accessSnapshot.data ??
+            const _SessionAccess(role: 'unknown', status: 'inactive');
         final role = access.role;
         final status = access.status;
 
@@ -171,113 +180,143 @@ class _AdminDashboardState extends State<AdminDashboard> {
           );
         }
 
-        final titles = <String>[
-          'System Overview',
-          'Grower Management',
-          'System Sets',
-          'Support Tickets',
-        ];
-
         return ListenableBuilder(
           listenable: _navigationProvider,
           builder: (context, child) {
-            return LayoutBuilder(builder: (context, constraints) {
-              final selectedIndex = _navigationProvider.selectedIndex < titles.length
-                  ? _navigationProvider.selectedIndex
-                  : 0;
-              final width = constraints.maxWidth;
-              final isMobile = width < 600;
-              final isTablet = width >= 600 && width < 1100;
-              final isDesktop = width >= 1100;
-              final showSidebar = isTablet || isDesktop;
-              final collapsedSidebar = isTablet ? true : _isSidebarCollapsed;
-              final isDark = Theme.of(context).brightness == Brightness.dark;
-              final sidebarBackground = isDark ? const Color(0xFF0C1018) : const Color(0xFFF7F9FC);
-              const contentTopPadding = 24.0;
-              final sidebarDividerColor = isDark ? const Color(0xFF1A2130) : const Color(0xFFE3E7EE);
-
-              return Scaffold(
-                drawer: isMobile
-                    ? Drawer(
-                        child: AdminSidebar(
-                          navigationProvider: _navigationProvider,
-                          collapsed: false,
-                          showToggle: false,
-                          isDrawer: true,
-                          onToggleTheme: _toggleTheme,
-                          onLogout: _logoutAndGoToLogin,
-                        ),
-                      )
-                    : null,
-                body: Row(
-                  children: [
-                    if (showSidebar)
-                      Container(
-                        width: collapsedSidebar ? 76 : 248,
-                        decoration: BoxDecoration(
-                          color: sidebarBackground,
-                          border: Border(
-                            right: BorderSide(color: sidebarDividerColor),
+            return LayoutBuilder(
+              builder: (context, constraints) {
+                const tabCount = 5;
+                final selectedIndex =
+                    _navigationProvider.selectedIndex < tabCount
+                    ? _navigationProvider.selectedIndex
+                    : 0;
+                final width = constraints.maxWidth;
+                final isMobile = width < 600;
+                final isTablet = width >= 600 && width < 1100;
+                final isDesktop = width >= 1100;
+                final showSidebar = isTablet || isDesktop;
+                final collapsedSidebar = isTablet ? true : _isSidebarCollapsed;
+                final isDark = Theme.of(context).brightness == Brightness.dark;
+                final sidebarBackground = isDark
+                    ? const Color(0xFF10211C)
+                    : AquaponicsColors.offWhite;
+                final sidebarDividerColor = isDark
+                    ? const Color(0xFF22352D)
+                    : AquaponicsColors.adminBorder;
+                return Scaffold(
+                  drawer: isMobile
+                      ? Drawer(
+                          child: AdminSidebar(
+                            navigationProvider: _navigationProvider,
+                            collapsed: false,
+                            showToggle: false,
+                            isDrawer: true,
+                            onToggleTheme: _toggleTheme,
+                            onLogout: _logoutAndGoToLogin,
+                          ),
+                        )
+                      : null,
+                  body: Row(
+                    children: [
+                      if (showSidebar)
+                        Container(
+                          width: collapsedSidebar ? 76 : 248,
+                          decoration: BoxDecoration(
+                            color: sidebarBackground,
+                            border: Border(
+                              right: BorderSide(color: sidebarDividerColor),
+                            ),
+                          ),
+                          child: AdminSidebar(
+                            navigationProvider: _navigationProvider,
+                            collapsed: collapsedSidebar,
+                            showToggle: isDesktop,
+                            isDrawer: false,
+                            onToggleTheme: _toggleTheme,
+                            onLogout: _logoutAndGoToLogin,
+                            onToggleCollapse: () {
+                              setState(
+                                () =>
+                                    _isSidebarCollapsed = !_isSidebarCollapsed,
+                              );
+                            },
                           ),
                         ),
-                        child: AdminSidebar(
-                          navigationProvider: _navigationProvider,
-                          collapsed: collapsedSidebar,
-                          showToggle: isDesktop,
-                          isDrawer: false,
-                          onToggleTheme: _toggleTheme,
-                          onLogout: _logoutAndGoToLogin,
-                          onToggleCollapse: () {
-                            setState(() => _isSidebarCollapsed = !_isSidebarCollapsed);
-                          },
-                        ),
-                      ),
-                    Expanded(
-                      child: Stack(
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.only(top: contentTopPadding),
-                            child: _getView(selectedIndex, role),
+                      Expanded(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            gradient: isDark
+                                ? const LinearGradient(
+                                    colors: [
+                                      Color(0xFF0D1815),
+                                      Color(0xFF142520),
+                                    ],
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
+                                  )
+                                : const LinearGradient(
+                                    colors: [
+                                      Color(0xFFF9FBF9),
+                                      Color(0xFFF3F6F4),
+                                    ],
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
+                                  ),
                           ),
-                          if (isMobile)
-                            Positioned(
-                              top: 12,
-                              left: 12,
-                              child: Builder(
-                                builder: (context) => Material(
-                                  color: Theme.of(context).cardColor,
-                                  elevation: 2,
-                                  shape: const CircleBorder(),
-                                  child: IconButton(
-                                    icon: const Icon(Icons.menu),
-                                    onPressed: () => Scaffold.of(context).openDrawer(),
+                          child: SafeArea(
+                            child: Column(
+                              children: [
+                                if (isMobile)
+                                  Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: Padding(
+                                      padding: const EdgeInsets.fromLTRB(
+                                        8,
+                                        8,
+                                        8,
+                                        0,
+                                      ),
+                                      child: IconButton(
+                                        onPressed: () =>
+                                            Scaffold.of(context).openDrawer(),
+                                        icon: const Icon(Icons.menu_rounded),
+                                        tooltip: 'Open menu',
+                                      ),
+                                    ),
+                                  ),
+                                Expanded(
+                                  child: Padding(
+                                    padding: EdgeInsets.fromLTRB(
+                                      isMobile ? 8 : 12,
+                                      0,
+                                      isMobile ? 8 : 12,
+                                      isMobile ? 8 : 12,
+                                    ),
+                                    child: _getView(selectedIndex, role),
                                   ),
                                 ),
-                              ),
+                              ],
                             ),
-                        ],
+                          ),
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              );
-            });
+                    ],
+                  ),
+                );
+              },
+            );
           },
         );
       },
     );
   }
-
 }
 
 class _SessionAccess {
   final String role;
   final String status;
 
-  const _SessionAccess({
-    required this.role,
-    required this.status,
-  });
+  const _SessionAccess({required this.role, required this.status});
 }
 
 class _AccessDeniedView extends StatelessWidget {

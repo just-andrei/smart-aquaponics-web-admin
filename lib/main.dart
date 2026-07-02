@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'app_theme_controller.dart';
+import 'aquaponics_colors.dart';
 import 'about.dart';
 import 'contact.dart';
 import 'inquire.dart';
@@ -16,58 +18,65 @@ class AquaponicsApp extends StatefulWidget {
 }
 
 class _AquaponicsAppState extends State<AquaponicsApp> {
-  ThemeMode _themeMode = ThemeMode.system;
-
   void _handleThemeChanged(ThemeMode mode) {
-    setState(() {
-      _themeMode = mode;
-    });
+    setAppThemeMode(mode);
   }
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'Aquaponics',
-      themeMode: _themeMode,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF0F6D6A)),
-        useMaterial3: true,
-      ),
-      darkTheme: ThemeData(
-        brightness: Brightness.dark,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF0F6D6A),
-          brightness: Brightness.dark,
-        ),
-        useMaterial3: true,
-      ),
-      home: LandingPage(
-        themeMode: _themeMode,
-        onThemeChanged: _handleThemeChanged,
-      ),
-      onGenerateRoute: (settings) {
-        if (settings.name == '/' || settings.name == '/landing') {
-          return PageRouteBuilder(
-            transitionDuration: const Duration(milliseconds: 300),
-            pageBuilder: (context, animation, secondaryAnimation) =>
-                LandingPage(
-                  themeMode: _themeMode,
-                  onThemeChanged: _handleThemeChanged,
-                ),
-            transitionsBuilder:
-                (context, animation, secondaryAnimation, child) {
-              return FadeTransition(
-                opacity: CurvedAnimation(
-                  parent: animation,
-                  curve: Curves.easeInOut,
-                ),
-                child: child,
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: appThemeMode,
+      builder: (context, themeMode, _) {
+        return MaterialApp(
+          debugShowCheckedModeBanner: false,
+          title: 'Aquaponics',
+          themeMode: themeMode,
+          theme: ThemeData(
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: AquaponicsColors.mossGreen,
+              primary: AquaponicsColors.mossGreen,
+              secondary: AquaponicsColors.deepTeal,
+              surface: AquaponicsColors.offWhite,
+            ),
+            scaffoldBackgroundColor: AquaponicsColors.greenhouseBackground,
+            useMaterial3: true,
+          ),
+          darkTheme: ThemeData(
+            brightness: Brightness.dark,
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: AquaponicsColors.mossGreen,
+              brightness: Brightness.dark,
+            ),
+            useMaterial3: true,
+          ),
+          home: LandingPage(
+            themeMode: themeMode,
+            onThemeChanged: _handleThemeChanged,
+          ),
+          onGenerateRoute: (settings) {
+            if (settings.name == '/' || settings.name == '/landing') {
+              return PageRouteBuilder(
+                transitionDuration: const Duration(milliseconds: 300),
+                pageBuilder: (context, animation, secondaryAnimation) =>
+                    LandingPage(
+                      themeMode: themeMode,
+                      onThemeChanged: _handleThemeChanged,
+                    ),
+                transitionsBuilder:
+                    (context, animation, secondaryAnimation, child) {
+                  return FadeTransition(
+                    opacity: CurvedAnimation(
+                      parent: animation,
+                      curve: Curves.easeInOut,
+                    ),
+                    child: child,
+                  );
+                },
               );
-            },
-          );
-        }
-        return null;
+            }
+            return null;
+          },
+        );
       },
     );
   }
@@ -115,127 +124,201 @@ class _LandingPageState extends State<LandingPage> {
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
-    final scale = (screenWidth / 1200).clamp(0.6, 1.0);
+    final screenHeight = MediaQuery.of(context).size.height;
+    final isMobile = screenWidth < 640;
     final isNarrow = screenWidth < 900;
+    final isCompactHeight = screenHeight < 700;
 
-    final brandFontSize = (22 * scale).clamp(14.0, 22.0);
-    final navFontSize = (16 * scale).clamp(11.0, 16.0);
-    final heroTitleFontSize = (42 * scale).clamp(20.0, 42.0);
-    final heroSubtitleFontSize = (18 * scale).clamp(12.0, 18.0);
-    final buttonFontSize = (16 * scale).clamp(11.0, 16.0);
-    final buttonWidth = (190 * scale).clamp(140.0, 190.0);
-    final challengeTitleFontSize = (30 * scale).clamp(18.0, 30.0);
-    final challengeItemFontSize = (18 * scale).clamp(12.0, 18.0);
-    final sectionTitleSize = (32 * scale).clamp(18.0, 32.0);
-    final sectionBodySize = (17 * scale).clamp(12.0, 17.0);
+    final brandFontSize = isNarrow ? 18.0 : 22.0;
+    final navFontSize = isNarrow ? 14.0 : 16.0;
+    final heroTitleFontSize = isMobile
+        ? (isCompactHeight ? 30.0 : 34.0)
+        : isNarrow
+        ? 40.0
+        : 48.0;
+    final heroSubtitleFontSize = isMobile ? 15.5 : 19.0;
+    final buttonFontSize = 16.0;
+    final buttonWidth = isMobile
+        ? (screenWidth - 40).clamp(220.0, 260.0).toDouble()
+        : 220.0;
+    final challengeTitleFontSize = isNarrow ? 24.0 : 32.0;
+    final challengeItemFontSize = isNarrow ? 16.0 : 18.0;
+    final sectionTitleSize = isNarrow ? 26.0 : 34.0;
+    final sectionBodySize = isNarrow ? 16.0 : 17.0;
 
     return Scaffold(
       body: LayoutBuilder(
         builder: (context, constraints) {
+          final viewportHeight = constraints.maxHeight.isFinite
+              ? constraints.maxHeight
+              : screenHeight;
+          final heroMinHeight = isMobile
+              ? (isCompactHeight ? 620.0 : 680.0)
+              : viewportHeight < 760
+              ? 620.0
+              : viewportHeight * 0.82;
+          final heroHorizontalPadding = isMobile
+              ? 20.0
+              : isNarrow
+              ? 32.0
+              : 72.0;
+          final heroTopPadding = isMobile ? 116.0 : 132.0;
+          final heroBottomPadding = isCompactHeight ? 36.0 : 64.0;
+
           return Stack(
             children: [
               SingleChildScrollView(
                 controller: _scrollController,
                 child: Column(
                   children: [
-                    SizedBox(
-                      height: constraints.maxHeight,
+                    Container(
+                      constraints: BoxConstraints(minHeight: heroMinHeight),
                       child: Stack(
+                        clipBehavior: Clip.none,
                         children: [
-                          Container(
-                            decoration: const BoxDecoration(
-                              image: DecorationImage(
-                                image: AssetImage('image/aquaponics.png'),
-                                fit: BoxFit.cover,
+                          Positioned.fill(
+                            child: Container(
+                              decoration: const BoxDecoration(
+                                image: DecorationImage(
+                                  image: AssetImage('image/aquaponics.png'),
+                                  fit: BoxFit.cover,
+                                ),
                               ),
                             ),
                           ),
-                          Container(
-                            color: Colors.black.withOpacity(0.4),
-                          ),
-                          Center(
+                          Positioned.fill(
                             child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 55),
-                              margin: const EdgeInsets.symmetric(horizontal: 40),
                               decoration: BoxDecoration(
-                                color: const Color(0xFF0f2027).withOpacity(0.5),
-                                borderRadius: BorderRadius.circular(40),
-                                border: Border.all(color: Colors.white.withOpacity(0.1)),
+                                gradient: LinearGradient(
+                                  colors: [
+                                    const Color(
+                                      0xFFF7FBF7,
+                                    ).withValues(alpha: 0.88),
+                                    const Color(
+                                      0xFFEFF7F2,
+                                    ).withValues(alpha: 0.48),
+                                    const Color(
+                                      0xFF123C35,
+                                    ).withValues(alpha: 0.16),
+                                  ],
+                                  stops: const [0.0, 0.48, 1.0],
+                                  begin: Alignment.centerLeft,
+                                  end: Alignment.centerRight,
+                                ),
                               ),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    'Growing a Smarter, Greener Future.',
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                      fontSize: heroTitleFontSize,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.white,
+                            ),
+                          ),
+                          Padding(
+                            padding: EdgeInsets.fromLTRB(
+                              heroHorizontalPadding,
+                              heroTopPadding,
+                              heroHorizontalPadding,
+                              heroBottomPadding,
+                            ),
+                            child: Row(
+                              mainAxisAlignment: isNarrow
+                                  ? MainAxisAlignment.center
+                                  : MainAxisAlignment.start,
+                              children: [
+                                Flexible(
+                                  child: ConstrainedBox(
+                                    constraints: BoxConstraints(
+                                      maxWidth: isNarrow ? 620 : 650,
                                     ),
-                                  ),
-                                  const SizedBox(height: 15),
-                                  Text(
-                                    'Powered by hybrid energy and intelligent environmental control.',
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                      fontSize: heroSubtitleFontSize,
-                                      color: Colors.white70,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 40),
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      SizedBox(
-                                        width: buttonWidth,
-                                        child: ElevatedButton(
-                                          style: ElevatedButton.styleFrom(
-                                            foregroundColor: Colors.white,
-                                            padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 18),
-                                            backgroundColor: Colors.teal,
-                                            shape: RoundedRectangleBorder(
-                                              borderRadius: BorderRadius.circular(30),
-                                            ),
-                                          ),
-                                          onPressed: () {
-                                            Navigator.of(context).push(InquirePage.createRoute());
-                                          },
-                                          child: Text(
-                                            'Inquire',
-                                            style: TextStyle(fontSize: buttonFontSize),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      crossAxisAlignment: isNarrow
+                                          ? CrossAxisAlignment.center
+                                          : CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'Hybrid Power-Driven Aquaponics Control Center',
+                                          textAlign: isNarrow
+                                              ? TextAlign.center
+                                              : TextAlign.left,
+                                          style: TextStyle(
+                                            fontSize: heroTitleFontSize,
+                                            fontWeight: FontWeight.w800,
+                                            color:
+                                                AquaponicsColors.greenhouseText,
+                                            height: 1.12,
                                           ),
                                         ),
-                                      ),
-                                      const SizedBox(width: 20),
-                                      SizedBox(
-                                        width: buttonWidth,
-                                        child: OutlinedButton(
-                                          style: OutlinedButton.styleFrom(
-                                            padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 18),
-                                            side: const BorderSide(color: Colors.white),
-                                            shape: RoundedRectangleBorder(
-                                              borderRadius: BorderRadius.circular(30),
-                                            ),
+                                        const SizedBox(height: 15),
+                                        Text(
+                                          'Real-time IoT monitoring for water quality, fish and plant health, alerts, feeding records, and solar battery backup in one field-ready system.',
+                                          textAlign: isNarrow
+                                              ? TextAlign.center
+                                              : TextAlign.left,
+                                          style: TextStyle(
+                                            fontSize: heroSubtitleFontSize,
+                                            color:
+                                                AquaponicsColors.greenhouseText,
+                                            height: 1.5,
+                                            fontWeight: FontWeight.w600,
                                           ),
-                                          onPressed: () {
-                                            ScaffoldMessenger.of(context).showSnackBar(
-                                              const SnackBar(content: Text('Downloading App...')),
-                                            );
-                                          },
-                                          child: Text(
-                                            'Download App',
-                                            style: TextStyle(
-                                              color: Colors.white,
-                                              fontSize: buttonFontSize,
+                                        ),
+                                        SizedBox(
+                                          height: isCompactHeight ? 16 : 22,
+                                        ),
+                                        _buildHeroFeatureCards(
+                                          isNarrow: isNarrow,
+                                          bodySize: isMobile ? 14.0 : 15.0,
+                                        ),
+                                        SizedBox(
+                                          height: isCompactHeight ? 20 : 28,
+                                        ),
+                                        Align(
+                                          alignment: isNarrow
+                                              ? Alignment.center
+                                              : Alignment.centerLeft,
+                                          child: SizedBox(
+                                            width: buttonWidth,
+                                            child: ElevatedButton(
+                                              style: ElevatedButton.styleFrom(
+                                                foregroundColor: Colors.white,
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 30,
+                                                      vertical: 18,
+                                                    ),
+                                                backgroundColor:
+                                                    AquaponicsColors.mossGreen,
+                                                shape: RoundedRectangleBorder(
+                                                  borderRadius:
+                                                      BorderRadius.circular(30),
+                                                ),
+                                              ),
+                                              onPressed: () {
+                                                Navigator.of(context).push(
+                                                  InquirePage.createRoute(),
+                                                );
+                                              },
+                                              child: Row(
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment.center,
+                                                children: [
+                                                  const Icon(
+                                                    Icons.forum_rounded,
+                                                    size: 18,
+                                                  ),
+                                                  const SizedBox(width: 8),
+                                                  Text(
+                                                    'Request Demo',
+                                                    style: TextStyle(
+                                                      fontSize: buttonFontSize,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
                                             ),
                                           ),
                                         ),
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
-                                ],
-                              ),
+                                ),
+                              ],
                             ),
                           ),
                         ],
@@ -247,11 +330,16 @@ class _LandingPageState extends State<LandingPage> {
                       child: AnimatedSlide(
                         duration: const Duration(milliseconds: 350),
                         curve: Curves.easeOut,
-                        offset: _showChallenges ? Offset.zero : const Offset(0, 0.06),
+                        offset: _showChallenges
+                            ? Offset.zero
+                            : const Offset(0, 0.06),
                         child: Container(
                           width: double.infinity,
-                          padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 50),
-                          color: const Color(0xFF0f2027),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 40,
+                            vertical: 50,
+                          ),
+                          color: const Color(0xFF173128),
                           child: Center(
                             child: ConstrainedBox(
                               constraints: const BoxConstraints(maxWidth: 900),
@@ -259,7 +347,7 @@ class _LandingPageState extends State<LandingPage> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    'Challenges in Traditional Aquaponics',
+                                    'Problems Growers Face in the Field',
                                     style: TextStyle(
                                       fontSize: challengeTitleFontSize,
                                       fontWeight: FontWeight.bold,
@@ -267,24 +355,24 @@ class _LandingPageState extends State<LandingPage> {
                                     ),
                                   ),
                                   const SizedBox(height: 28),
-                                  Text(
-                                    '- High energy consumption',
-                                    style: TextStyle(fontSize: challengeItemFontSize, color: Colors.white70),
+                                  _buildChallengeItem(
+                                    'Unstable pH, oxygen, temperature, and turbidity',
+                                    challengeItemFontSize,
                                   ),
                                   const SizedBox(height: 14),
-                                  Text(
-                                    '- Manual monitoring of water quality',
-                                    style: TextStyle(fontSize: challengeItemFontSize, color: Colors.white70),
+                                  _buildChallengeItem(
+                                    'Flooding and saltwater intrusion that can damage fish and plants',
+                                    challengeItemFontSize,
                                   ),
                                   const SizedBox(height: 14),
-                                  Text(
-                                    '- Power outage risks',
-                                    style: TextStyle(fontSize: challengeItemFontSize, color: Colors.white70),
+                                  _buildChallengeItem(
+                                    'Manual monitoring that takes time and delays action',
+                                    challengeItemFontSize,
                                   ),
                                   const SizedBox(height: 14),
-                                  Text(
-                                    '- Inconsistent plant and fish growth',
-                                    style: TextStyle(fontSize: challengeItemFontSize, color: Colors.white70),
+                                  _buildChallengeItem(
+                                    'Power outages that interrupt pumps, aeration, and feeding routines',
+                                    challengeItemFontSize,
                                   ),
                                 ],
                               ),
@@ -327,11 +415,16 @@ class _LandingPageState extends State<LandingPage> {
                 left: 0,
                 right: 0,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 40,
+                    vertical: 20,
+                  ),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF0f2027).withOpacity(0.92),
+                    color: Colors.white.withValues(alpha: 0.86),
                     border: Border(
-                      bottom: BorderSide(color: Colors.white.withOpacity(0.1)),
+                      bottom: const BorderSide(
+                        color: AquaponicsColors.adminBorder,
+                      ),
                     ),
                   ),
                   child: SafeArea(
@@ -345,34 +438,72 @@ class _LandingPageState extends State<LandingPage> {
                               'Aquaponics',
                               style: TextStyle(
                                 fontSize: brandFontSize,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
+                                fontWeight: FontWeight.w800,
+                                color: AquaponicsColors.greenhouseText,
                               ),
                             ),
                           ],
                         ),
                         Row(
                           children: [
-                            NavItem(
-                              title: 'About Us',
-                              fontSize: navFontSize,
-                              themeMode: widget.themeMode,
-                              onThemeChanged: widget.onThemeChanged,
-                            ),
-                            const SizedBox(width: 28),
-                            NavItem(
-                              title: 'Contact Us',
-                              fontSize: navFontSize,
-                              themeMode: widget.themeMode,
-                              onThemeChanged: widget.onThemeChanged,
-                            ),
-                            const SizedBox(width: 28),
-                            NavItem(
-                              title: 'Login',
-                              fontSize: navFontSize,
-                              themeMode: widget.themeMode,
-                              onThemeChanged: widget.onThemeChanged,
-                            ),
+                            if (!isNarrow) ...[
+                              NavItem(
+                                title: 'About Us',
+                                fontSize: navFontSize,
+                                themeMode: widget.themeMode,
+                                onThemeChanged: widget.onThemeChanged,
+                              ),
+                              const SizedBox(width: 28),
+                              NavItem(
+                                title: 'Contact Us',
+                                fontSize: navFontSize,
+                                themeMode: widget.themeMode,
+                                onThemeChanged: widget.onThemeChanged,
+                              ),
+                              const SizedBox(width: 28),
+                              NavItem(
+                                title: 'Login',
+                                fontSize: navFontSize,
+                                themeMode: widget.themeMode,
+                                onThemeChanged: widget.onThemeChanged,
+                              ),
+                            ] else
+                              PopupMenuButton<String>(
+                                tooltip: 'Open navigation menu',
+                                icon: const Icon(Icons.menu_rounded),
+                                onSelected: (value) {
+                                  if (value == 'About Us') {
+                                    Navigator.of(
+                                      context,
+                                    ).push(AboutPage.createRoute());
+                                  } else if (value == 'Contact Us') {
+                                    Navigator.of(
+                                      context,
+                                    ).push(ContactPage.createRoute());
+                                  } else if (value == 'Login') {
+                                    Navigator.of(context).push(
+                                      LoginPage.createRoute(
+                                        themeMode: widget.themeMode,
+                                        onThemeChanged: widget.onThemeChanged,
+                                      ),
+                                    );
+                                  }
+                                },
+                                itemBuilder: (context) => const [
+                                  PopupMenuItem(
+                                    value: 'About Us',
+                                    child: Text('About Us'),
+                                  ),
+                                  PopupMenuItem(
+                                    value: 'Contact Us',
+                                    child: Text('Contact Us'),
+                                  ),
+                                  PopupMenuItem(
+                                    value: 'Login',
+                                    child: Text('Login'),
+                                  ),
+                                ],
+                              ),
                           ],
                         ),
                       ],
@@ -394,53 +525,7 @@ class _LandingPageState extends State<LandingPage> {
   }) {
     return Container(
       width: double.infinity,
-      color: const Color(0xFFEAF1F6)
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      ,
+      color: const Color(0xFFEAF1F6),
       padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 60),
       child: Center(
         child: ConstrainedBox(
@@ -449,11 +534,20 @@ class _LandingPageState extends State<LandingPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Our Smart Hybrid Solution',
+                'Real-Time IoT Monitoring with Hybrid Solar Backup',
                 style: TextStyle(
                   fontSize: titleSize,
                   fontWeight: FontWeight.bold,
-                  color: const Color(0xFF0f2027),
+                  color: AquaponicsColors.greenhouseText,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'The system combines aquaponics, environmental sensors, controller automation, and backup power so operators can respond before fish, plants, or pumps are at risk.',
+                style: TextStyle(
+                  fontSize: bodySize,
+                  color: AquaponicsColors.greenhouseSubtext,
+                  height: 1.55,
                 ),
               ),
               const SizedBox(height: 26),
@@ -461,10 +555,26 @@ class _LandingPageState extends State<LandingPage> {
                 spacing: 16,
                 runSpacing: 16,
                 children: [
-                  _buildTagCard('Hybrid Power System (Solar + Grid + Battery Backup)', bodySize, Icons.battery_charging_full_rounded),
-                  _buildTagCard('IoT-enabled real-time monitoring', bodySize, Icons.sensors_rounded),
-                  _buildTagCard('Automated environmental control', bodySize, Icons.tune_rounded),
-                  _buildTagCard('Remote access via mobile', bodySize, Icons.devices_rounded),
+                  _buildTagCard(
+                    'Water quality and environment readings',
+                    bodySize,
+                    Icons.sensors_rounded,
+                  ),
+                  _buildTagCard(
+                    'Hybrid grid, solar, and battery resilience',
+                    bodySize,
+                    Icons.battery_charging_full_rounded,
+                  ),
+                  _buildTagCard(
+                    'Alerts with recommended action',
+                    bodySize,
+                    Icons.warning_amber_rounded,
+                  ),
+                  _buildTagCard(
+                    'Grower records, reports, and support',
+                    bodySize,
+                    Icons.assignment_rounded,
+                  ),
                 ],
               ),
               const SizedBox(height: 30),
@@ -482,17 +592,26 @@ class _LandingPageState extends State<LandingPage> {
                           const _DiagramNode(label: 'Sensors'),
                           const Padding(
                             padding: EdgeInsets.symmetric(vertical: 6),
-                            child: Icon(Icons.arrow_downward, color: Color(0xFF3F4A5A)),
+                            child: Icon(
+                              Icons.arrow_downward,
+                              color: Color(0xFF3F4A5A),
+                            ),
                           ),
                           const _DiagramNode(label: 'IoT Controller'),
                           const Padding(
                             padding: EdgeInsets.symmetric(vertical: 6),
-                            child: Icon(Icons.arrow_downward, color: Color(0xFF3F4A5A)),
+                            child: Icon(
+                              Icons.arrow_downward,
+                              color: Color(0xFF3F4A5A),
+                            ),
                           ),
-                          const _DiagramNode(label: 'Automation'),
+                          const _DiagramNode(label: 'Power + Controls'),
                           const Padding(
                             padding: EdgeInsets.symmetric(vertical: 6),
-                            child: Icon(Icons.arrow_downward, color: Color(0xFF3F4A5A)),
+                            child: Icon(
+                              Icons.arrow_downward,
+                              color: Color(0xFF3F4A5A),
+                            ),
                           ),
                           const _DiagramNode(label: 'Dashboard'),
                         ],
@@ -502,9 +621,13 @@ class _LandingPageState extends State<LandingPage> {
                         children: [
                           Expanded(child: _DiagramNode(label: 'Sensors')),
                           Icon(Icons.arrow_forward, color: Color(0xFF3F4A5A)),
-                          Expanded(child: _DiagramNode(label: 'IoT Controller')),
+                          Expanded(
+                            child: _DiagramNode(label: 'IoT Controller'),
+                          ),
                           Icon(Icons.arrow_forward, color: Color(0xFF3F4A5A)),
-                          Expanded(child: _DiagramNode(label: 'Automation')),
+                          Expanded(
+                            child: _DiagramNode(label: 'Power + Controls'),
+                          ),
                           Icon(Icons.arrow_forward, color: Color(0xFF3F4A5A)),
                           Expanded(child: _DiagramNode(label: 'Dashboard')),
                         ],
@@ -533,11 +656,11 @@ class _LandingPageState extends State<LandingPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'How It Works',
+                'How It Helps Operators Act Faster',
                 style: TextStyle(
                   fontSize: titleSize,
                   fontWeight: FontWeight.bold,
-                  color: const Color(0xFF0f2027),
+                  color: AquaponicsColors.greenhouseText,
                 ),
               ),
               const SizedBox(height: 26),
@@ -545,10 +668,30 @@ class _LandingPageState extends State<LandingPage> {
                 spacing: 16,
                 runSpacing: 16,
                 children: [
-                  _buildStepCard('Step 1', 'Sensors collect environmental data', bodySize, isNarrow),
-                  _buildStepCard('Step 2', 'IoT controller processes information', bodySize, isNarrow),
-                  _buildStepCard('Step 3', 'System automatically adjusts components', bodySize, isNarrow),
-                  _buildStepCard('Step 4', 'User monitors remotely through dashboard', bodySize, isNarrow),
+                  _buildStepCard(
+                    'Step 1',
+                    'Sensors read pH, temperature, turbidity, oxygen, and humidity',
+                    bodySize,
+                    isNarrow,
+                  ),
+                  _buildStepCard(
+                    'Step 2',
+                    'The controller sends updates to the dashboard in real time',
+                    bodySize,
+                    isNarrow,
+                  ),
+                  _buildStepCard(
+                    'Step 3',
+                    'Alerts explain the risk and the next practical action',
+                    bodySize,
+                    isNarrow,
+                  ),
+                  _buildStepCard(
+                    'Step 4',
+                    'Reports and records keep feeding, growth, and support work organized',
+                    bodySize,
+                    isNarrow,
+                  ),
                 ],
               ),
             ],
@@ -574,11 +717,11 @@ class _LandingPageState extends State<LandingPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'KEY FEATURES',
+                'Field-Ready Features',
                 style: TextStyle(
                   fontSize: titleSize,
                   fontWeight: FontWeight.bold,
-                  color: const Color(0xFF0f2027),
+                  color: AquaponicsColors.greenhouseText,
                 ),
               ),
               const SizedBox(height: 26),
@@ -586,11 +729,48 @@ class _LandingPageState extends State<LandingPage> {
                 spacing: 16,
                 runSpacing: 16,
                 children: [
-                  _buildFeatureCard('Hybrid energy integration', bodySize, isNarrow, Icons.bolt_rounded),
-                  _buildFeatureCard('Real-time monitoring', bodySize, isNarrow, Icons.monitor_heart_rounded),
-                  _buildFeatureCard('Automated pH and temperature control', bodySize, isNarrow, Icons.thermostat_rounded),
-                  _buildFeatureCard('Smart alerts and notifications', bodySize, isNarrow, Icons.notifications_active_rounded),
-                  _buildFeatureCard('Backup power protection', bodySize, isNarrow, Icons.security_rounded),
+                  _buildFeatureCard(
+                    'Water Monitoring',
+                    'pH, water temperature, dissolved oxygen, turbidity, and humidity are presented in large readable cards.',
+                    bodySize,
+                    isNarrow,
+                    Icons.water_drop_rounded,
+                  ),
+                  _buildFeatureCard(
+                    'Alerts',
+                    'Warnings and critical events include current readings, safe ranges, and recommended action.',
+                    bodySize,
+                    isNarrow,
+                    Icons.notifications_active_rounded,
+                  ),
+                  _buildFeatureCard(
+                    'Feeding',
+                    'Feeding schedules and operating notes stay visible for day-to-day fish care.',
+                    bodySize,
+                    isNarrow,
+                    Icons.restaurant_rounded,
+                  ),
+                  _buildFeatureCard(
+                    'Plant and Aquaculture Records',
+                    'Grower profiles, fish batches, plants, and system sets are kept organized for follow-up.',
+                    bodySize,
+                    isNarrow,
+                    Icons.eco_rounded,
+                  ),
+                  _buildFeatureCard(
+                    'Reports',
+                    'History and summaries support school, community, and small business reporting needs.',
+                    bodySize,
+                    isNarrow,
+                    Icons.summarize_rounded,
+                  ),
+                  _buildFeatureCard(
+                    'Solar Backup',
+                    'Battery and solar status help operators prepare for outages and unstable field power.',
+                    bodySize,
+                    isNarrow,
+                    Icons.solar_power_rounded,
+                  ),
                 ],
               ),
             ],
@@ -616,11 +796,11 @@ class _LandingPageState extends State<LandingPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Why Choose Our System',
+                'Benefits for Sustainable Food Production',
                 style: TextStyle(
                   fontSize: titleSize,
                   fontWeight: FontWeight.bold,
-                  color: const Color(0xFF0f2027),
+                  color: AquaponicsColors.greenhouseText,
                 ),
               ),
               const SizedBox(height: 26),
@@ -628,11 +808,48 @@ class _LandingPageState extends State<LandingPage> {
                 spacing: 16,
                 runSpacing: 16,
                 children: [
-                  _buildBenefitCard('Lower electricity costs', bodySize, isNarrow, Icons.savings_rounded),
-                  _buildBenefitCard('Higher crop yield', bodySize, isNarrow, Icons.eco_rounded),
-                  _buildBenefitCard('Reduced manual labor', bodySize, isNarrow, Icons.engineering_rounded),
-                  _buildBenefitCard('More stable ecosystem', bodySize, isNarrow, Icons.water_drop_rounded),
-                  _buildBenefitCard('Sustainable farming solution', bodySize, isNarrow, Icons.energy_savings_leaf_rounded),
+                  _buildBenefitCard(
+                    'Healthier fish and plants',
+                    'Keep water conditions closer to the safe range.',
+                    bodySize,
+                    isNarrow,
+                    Icons.eco_rounded,
+                  ),
+                  _buildBenefitCard(
+                    'Fewer losses',
+                    'Catch water and power issues before they become costly.',
+                    bodySize,
+                    isNarrow,
+                    Icons.health_and_safety_rounded,
+                  ),
+                  _buildBenefitCard(
+                    'Faster alerts',
+                    'See what happened, how serious it is, and what to check next.',
+                    bodySize,
+                    isNarrow,
+                    Icons.speed_rounded,
+                  ),
+                  _buildBenefitCard(
+                    'Less manual work',
+                    'Reduce repeated checking and recordkeeping for small operators.',
+                    bodySize,
+                    isNarrow,
+                    Icons.engineering_rounded,
+                  ),
+                  _buildBenefitCard(
+                    'Resilient power',
+                    'Solar and battery backup help keep pumps and aeration protected.',
+                    bodySize,
+                    isNarrow,
+                    Icons.battery_charging_full_rounded,
+                  ),
+                  _buildBenefitCard(
+                    'Community-ready',
+                    'Useful for fisherfolks, schools, farmers, urban growers, and admins.',
+                    bodySize,
+                    isNarrow,
+                    Icons.groups_rounded,
+                  ),
                 ],
               ),
             ],
@@ -666,7 +883,7 @@ class _LandingPageState extends State<LandingPage> {
               ),
               const SizedBox(height: 22),
               Text(
-                'The Smart Aquaponics system is a Hybrid Power-Driven Aquaponics System with IoT Environmental Control designed to provide smart and sustainable food production solutions.',
+                'This capstone system is built for small-scale aquaponics and fishpond operations that need practical monitoring, reliable alerts, and sustainable energy support.',
                 style: TextStyle(
                   fontSize: bodySize,
                   color: Colors.white70,
@@ -675,7 +892,7 @@ class _LandingPageState extends State<LandingPage> {
               ),
               const SizedBox(height: 16),
               Text(
-                'Our system integrates aquaculture and hydroponics in a closed-loop environment while using IoT-based monitoring and automation to maintain optimal conditions for fish and plants. Powered by a hybrid combination of electricity and solar energy, the Smart Aquaponics system ensures reliable, efficient, and climate-resilient agricultural production for communities, fisherfolks, and small-scale farmers.',
+                'It brings aquaculture, hydroponics, environmental sensing, and hybrid power into one control center for fisherfolks, community projects, schools, urban gardeners, business owners, and administrators.',
                 style: TextStyle(
                   fontSize: bodySize,
                   color: Colors.white70,
@@ -687,7 +904,10 @@ class _LandingPageState extends State<LandingPage> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.tealAccent,
                   foregroundColor: Colors.black,
-                  padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 14),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 26,
+                    vertical: 14,
+                  ),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(28),
                   ),
@@ -696,7 +916,7 @@ class _LandingPageState extends State<LandingPage> {
                   Navigator.of(context).push(AboutPage.createRoute());
                 },
                 child: const Text(
-                  'About Us',
+                  'Learn More',
                   style: TextStyle(fontWeight: FontWeight.w700),
                 ),
               ),
@@ -717,7 +937,7 @@ class _LandingPageState extends State<LandingPage> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              'Ready to Build a Smart Aquaponics System?',
+              'Ready to Monitor an Aquaponics System with Confidence?',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: titleSize,
@@ -735,7 +955,10 @@ class _LandingPageState extends State<LandingPage> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.white,
                     foregroundColor: const Color(0xFF0C5B5A),
-                    padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 28,
+                      vertical: 14,
+                    ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(28),
                     ),
@@ -744,7 +967,7 @@ class _LandingPageState extends State<LandingPage> {
                     Navigator.of(context).push(InquirePage.createRoute());
                   },
                   child: const Text(
-                    'Inquire',
+                    'Request Demo',
                     style: TextStyle(fontWeight: FontWeight.w700),
                   ),
                 ),
@@ -752,7 +975,10 @@ class _LandingPageState extends State<LandingPage> {
                   style: OutlinedButton.styleFrom(
                     foregroundColor: Colors.white,
                     side: const BorderSide(color: Colors.white),
-                    padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 28,
+                      vertical: 14,
+                    ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(28),
                     ),
@@ -773,10 +999,7 @@ class _LandingPageState extends State<LandingPage> {
     );
   }
 
-  Widget _buildFooter({
-    required bool isNarrow,
-    required double bodySize,
-  }) {
+  Widget _buildFooter({required bool isNarrow, required double bodySize}) {
     return Container(
       width: double.infinity,
       color: const Color(0xFF08141A),
@@ -862,13 +1085,29 @@ class _LandingPageState extends State<LandingPage> {
                       ),
                     ),
                     const SizedBox(height: 10),
-                    _footerInfo(Icons.email_outlined, 'info@smartaquaponics.com', bodySize),
+                    _footerInfo(
+                      Icons.email_outlined,
+                      'info@smartaquaponics.com',
+                      bodySize,
+                    ),
                     const SizedBox(height: 8),
-                    _footerInfo(Icons.phone_outlined, '+63 912 345 6789', bodySize),
+                    _footerInfo(
+                      Icons.phone_outlined,
+                      '+63 912 345 6789',
+                      bodySize,
+                    ),
                     const SizedBox(height: 8),
-                    _footerInfo(Icons.location_on_outlined, 'Bulacan, Philippines', bodySize),
+                    _footerInfo(
+                      Icons.location_on_outlined,
+                      'Bulacan, Philippines',
+                      bodySize,
+                    ),
                     const SizedBox(height: 8),
-                    _footerInfo(Icons.access_time_outlined, 'Mon-Fri: 8AM - 5PM', bodySize),
+                    _footerInfo(
+                      Icons.access_time_outlined,
+                      'Mon-Fri: 8AM - 5PM',
+                      bodySize,
+                    ),
                   ],
                 ),
               ),
@@ -890,9 +1129,21 @@ class _LandingPageState extends State<LandingPage> {
                       spacing: 10,
                       runSpacing: 10,
                       children: [
-                        _footerSocialIcon(Icons.facebook, Colors.blueAccent, bodySize),
-                        _footerSocialIcon(Icons.camera_alt, Colors.pinkAccent, bodySize),
-                        _footerSocialIcon(Icons.play_circle_fill, Colors.redAccent, bodySize),
+                        _footerSocialIcon(
+                          Icons.facebook,
+                          Colors.blueAccent,
+                          bodySize,
+                        ),
+                        _footerSocialIcon(
+                          Icons.camera_alt,
+                          Colors.pinkAccent,
+                          bodySize,
+                        ),
+                        _footerSocialIcon(
+                          Icons.play_circle_fill,
+                          Colors.redAccent,
+                          bodySize,
+                        ),
                       ],
                     ),
                   ],
@@ -901,7 +1152,7 @@ class _LandingPageState extends State<LandingPage> {
               Container(
                 width: double.infinity,
                 height: 1,
-                color: Colors.white.withOpacity(0.14),
+                color: Colors.white.withValues(alpha: 0.14),
               ),
               Text(
                 'Copyright 2026 Smart Aquaponics. All rights reserved.',
@@ -913,6 +1164,42 @@ class _LandingPageState extends State<LandingPage> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildChallengeItem(String text, double fontSize) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: const Color(0xFF3B82F6).withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: const Icon(
+              Icons.insights_rounded,
+              size: 16,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(fontSize: fontSize, color: Colors.white70),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -957,7 +1244,7 @@ class _LandingPageState extends State<LandingPage> {
       width: bodySize + 24,
       height: bodySize + 24,
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.08),
+        color: Colors.white.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(999),
         border: Border.all(color: Colors.white24),
       ),
@@ -965,34 +1252,70 @@ class _LandingPageState extends State<LandingPage> {
     );
   }
 
-  Widget _buildTagCard(String text, double bodySize, IconData icon) {
+  Widget _buildHeroFeatureCards({
+    required bool isNarrow,
+    required double bodySize,
+  }) {
+    final cards = [
+      (
+        icon: Icons.water_drop_rounded,
+        text: 'Monitor pH, oxygen, turbidity, and temperature',
+      ),
+      (
+        icon: Icons.solar_power_rounded,
+        text: 'Hybrid solar and battery backup',
+      ),
+      (
+        icon: Icons.notifications_active_rounded,
+        text: 'Plain-language alerts and reports',
+      ),
+    ];
+
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: isNarrow ? double.infinity : 520),
+      child: Column(
+        children: [
+          for (var index = 0; index < cards.length; index++) ...[
+            _buildHeroFeatureCard(
+              cards[index].text,
+              bodySize,
+              cards[index].icon,
+            ),
+            if (index != cards.length - 1) const SizedBox(height: 8),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeroFeatureCard(String text, double bodySize, IconData icon) {
     return Container(
-      constraints: const BoxConstraints(minWidth: 240),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFDDE4EA)),
-        boxShadow: [
+        color: Colors.white.withValues(alpha: 0.92),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AquaponicsColors.adminBorder),
+        boxShadow: const [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
+            color: AquaponicsColors.greenhouseShadow,
+            blurRadius: 14,
+            offset: Offset(0, 5),
           ),
         ],
       ),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: const Color(0xFF0F6D6A), size: bodySize + 2),
-          const SizedBox(width: 10),
+          Icon(icon, color: AquaponicsColors.mossGreen, size: bodySize + 5),
+          const SizedBox(width: 14),
           Expanded(
             child: Text(
               text,
               style: TextStyle(
-                color: const Color(0xFF1B2838),
+                color: AquaponicsColors.greenhouseText,
                 fontSize: bodySize,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w700,
+                height: 1.25,
               ),
             ),
           ),
@@ -1001,19 +1324,63 @@ class _LandingPageState extends State<LandingPage> {
     );
   }
 
-  Widget _buildStepCard(String step, String text, double bodySize, bool isNarrow) {
+  Widget _buildTagCard(String text, double bodySize, IconData icon) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minWidth: 240, maxWidth: 360),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.96),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0x14000000)),
+          boxShadow: const [
+            BoxShadow(
+              color: AquaponicsColors.greenhouseShadow,
+              blurRadius: 12,
+              offset: Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, color: AquaponicsColors.mossGreen, size: bodySize + 2),
+            const SizedBox(width: 10),
+            Flexible(
+              child: Text(
+                text,
+                style: TextStyle(
+                  color: AquaponicsColors.greenhouseText,
+                  fontSize: bodySize,
+                  fontWeight: FontWeight.w600,
+                  height: 1.25,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStepCard(
+    String step,
+    String text,
+    double bodySize,
+    bool isNarrow,
+  ) {
     return Container(
       width: isNarrow ? double.infinity : 250,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: const Color(0xFFF7FBFF),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFDDE4EA)),
-        boxShadow: [
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0x14000000)),
+        boxShadow: const [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: AquaponicsColors.greenhouseShadow,
             blurRadius: 14,
-            offset: const Offset(0, 5),
+            offset: Offset(0, 5),
           ),
         ],
       ),
@@ -1023,7 +1390,7 @@ class _LandingPageState extends State<LandingPage> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             decoration: BoxDecoration(
-              color: const Color(0xFF0F6D6A),
+              color: AquaponicsColors.deepTeal,
               borderRadius: BorderRadius.circular(20),
             ),
             child: Text(
@@ -1040,7 +1407,7 @@ class _LandingPageState extends State<LandingPage> {
             text,
             style: TextStyle(
               fontSize: bodySize,
-              color: const Color(0xFF2F3E50),
+              color: AquaponicsColors.greenhouseText,
               fontWeight: FontWeight.w600,
               height: 1.35,
             ),
@@ -1050,45 +1417,61 @@ class _LandingPageState extends State<LandingPage> {
     );
   }
 
-  Widget _buildFeatureCard(String text, double bodySize, bool isNarrow, IconData icon) {
+  Widget _buildFeatureCard(
+    String title,
+    String description,
+    double bodySize,
+    bool isNarrow,
+    IconData icon,
+  ) {
     return Container(
       width: isNarrow ? double.infinity : 330,
-      padding: const EdgeInsets.all(18),
+      constraints: const BoxConstraints(minHeight: 164),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFDDE4EA)),
-        boxShadow: [
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0x14000000)),
+        boxShadow: const [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: AquaponicsColors.greenhouseShadow,
             blurRadius: 12,
-            offset: const Offset(0, 4),
+            offset: Offset(0, 4),
           ),
         ],
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.center,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            padding: const EdgeInsets.all(8),
+            padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: const Color(0xFFEAF7F6),
-              borderRadius: BorderRadius.circular(10),
+              color: const Color(0xFFEAF2EE),
+              borderRadius: BorderRadius.circular(12),
             ),
-            child: Icon(icon, color: const Color(0xFF0F6D6A), size: bodySize + 2),
+            child: Icon(
+              icon,
+              color: AquaponicsColors.deepTeal,
+              size: bodySize + 2,
+            ),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              text,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: bodySize,
-                color: const Color(0xFF1B2838),
-                fontWeight: FontWeight.w600,
-                height: 1.3,
-              ),
+          const SizedBox(height: 14),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: bodySize + 1,
+              color: AquaponicsColors.greenhouseText,
+              fontWeight: FontWeight.w800,
+              height: 1.25,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            description,
+            style: TextStyle(
+              fontSize: bodySize - 1,
+              color: AquaponicsColors.greenhouseSubtext,
+              height: 1.45,
             ),
           ),
         ],
@@ -1096,34 +1479,68 @@ class _LandingPageState extends State<LandingPage> {
     );
   }
 
-  Widget _buildBenefitCard(String text, double bodySize, bool isNarrow, IconData icon) {
+  Widget _buildBenefitCard(
+    String title,
+    String description,
+    double bodySize,
+    bool isNarrow,
+    IconData icon,
+  ) {
     return Container(
-      width: isNarrow ? double.infinity : 260,
-      padding: const EdgeInsets.all(16),
+      width: isNarrow ? double.infinity : 340,
+      constraints: const BoxConstraints(minHeight: 118),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: const Color(0xFFEDF7F6),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFCFE5E2)),
-        boxShadow: [
+        color: const Color(0xFFF0F5F1),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0x14000000)),
+        boxShadow: const [
           BoxShadow(
-            color: Colors.black.withOpacity(0.03),
+            color: AquaponicsColors.greenhouseShadow,
             blurRadius: 10,
-            offset: const Offset(0, 4),
+            offset: Offset(0, 4),
           ),
         ],
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: const Color(0xFF0F6D6A), size: bodySize + 2),
-          const SizedBox(width: 10),
+          Container(
+            padding: const EdgeInsets.all(9),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              icon,
+              color: AquaponicsColors.mossGreen,
+              size: bodySize + 2,
+            ),
+          ),
+          const SizedBox(width: 12),
           Expanded(
-            child: Text(
-              text,
-              style: TextStyle(
-                fontSize: bodySize,
-                color: const Color(0xFF16413E),
-                fontWeight: FontWeight.w600,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: bodySize,
+                    color: AquaponicsColors.greenhouseText,
+                    fontWeight: FontWeight.w800,
+                    height: 1.25,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  description,
+                  style: TextStyle(
+                    fontSize: bodySize - 1,
+                    color: AquaponicsColors.greenhouseSubtext,
+                    height: 1.35,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -1195,8 +1612,9 @@ class NavItem extends StatelessWidget {
       child: Text(
         title,
         style: TextStyle(
-          color: Colors.white,
+          color: AquaponicsColors.greenhouseText,
           fontSize: fontSize,
+          fontWeight: FontWeight.w600,
         ),
       ),
     );

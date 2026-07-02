@@ -67,3 +67,24 @@ node_modules/
 
 # dataconnect generated files
 .dataconnect
+
+# Flutter / Dart generated files
+.dart_tool/
+.packages
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub/
+.pub-cache/
+build/
+
+# IDE and local workspace files
+.idea/
+.vscode/
+
+# Local project metadata
+.agents/
+.mcp.json
+PROJECT_STATE.md
+skills-lock.json
+tmp_*.json
+tmp_*.log

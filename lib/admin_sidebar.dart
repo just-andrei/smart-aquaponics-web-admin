@@ -32,46 +32,101 @@ class AdminSidebar extends StatelessWidget {
       const _NavItem(index: 1, icon: Icons.people_alt_rounded, label: 'Growers'),
       const _NavItem(index: 2, icon: Icons.layers_rounded, label: 'System Sets'),
       const _NavItem(index: 3, icon: Icons.support_agent_rounded, label: 'Support Tickets'),
+      const _NavItem(index: 4, icon: Icons.auto_awesome_rounded, label: 'Compatibility'),
     ];
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final dividerColor = isDark ? const Color(0xFF1A2130) : const Color(0xFFE3E7EE);
-    final brandTextColor = isDark ? Colors.white : const Color(0xFF111827);
+    final dividerColor = isDark ? const Color(0xFF22352D) : AquaponicsColors.adminBorder;
+    final brandTextColor = isDark ? Colors.white : AquaponicsColors.greenhouseText;
 
     return Column(
       children: [
         Container(
-          height: 74,
-          padding: EdgeInsets.symmetric(horizontal: collapsed ? 0 : 16),
+          height: 108,
+          padding: EdgeInsets.symmetric(horizontal: collapsed ? 10 : 16, vertical: 14),
           alignment: collapsed ? Alignment.center : Alignment.centerLeft,
           decoration: BoxDecoration(
+            gradient: isDark
+                ? const LinearGradient(
+                    colors: [Color(0xFF11231D), Color(0xFF173128)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  )
+                : const LinearGradient(
+                    colors: [Color(0xFFFDFEFC), Color(0xFFEAF2EE)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
             border: Border(
               bottom: BorderSide(color: dividerColor),
             ),
           ),
           child: collapsed
-              ? Text(
-                  'Aquaponics',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: brandTextColor,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
+              ? Container(
+                  width: 46,
+                  height: 46,
+                  decoration: BoxDecoration(
+                    color: AquaponicsColors.mossGreen,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: AquaponicsColors.greenhouseShadow,
+                        blurRadius: 18,
+                        offset: Offset(0, 8),
+                      ),
+                    ],
                   ),
+                  alignment: Alignment.center,
+                  child: const Icon(Icons.water_drop_rounded, color: Colors.white),
                 )
-              : Text(
-                  'Aquaponics',
-                  style: TextStyle(
-                    color: brandTextColor,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                  ),
+              : Row(
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: AquaponicsColors.mossGreen,
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: AquaponicsColors.greenhouseShadow,
+                            blurRadius: 18,
+                            offset: Offset(0, 8),
+                          ),
+                        ],
+                      ),
+                      alignment: Alignment.center,
+                      child: const Icon(
+                        Icons.water_drop_rounded,
+                        color: Colors.white,
+                        size: 24,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            'Smart Aquaponics',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: brandTextColor,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
         ),
         Expanded(
           child: ListView(
-            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+            padding: const EdgeInsets.fromLTRB(8, 16, 8, 12),
             children: navItems
                 .map(
                   (item) => _buildNavItem(
@@ -125,18 +180,20 @@ class AdminSidebar extends StatelessWidget {
     required bool isDark,
   }) {
     final selected = navigationProvider.selectedIndex == item.index;
-    final defaultIconColor = isDark ? const Color(0xFFA4ACB9) : const Color(0xFF4B5563);
-    final defaultTextColor = isDark ? const Color(0xFFD0D5DF) : const Color(0xFF111827);
+      final defaultIconColor = isDark ? const Color(0xFFA4C0B2) : AquaponicsColors.greenhouseSubtext;
+      final defaultTextColor = isDark ? const Color(0xFFE0ECE5) : AquaponicsColors.greenhouseText;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Tooltip(
         message: collapsed ? item.label : '',
         child: Material(
-          color: selected ? const Color(0xFF1F64D8) : Colors.transparent,
-          borderRadius: BorderRadius.circular(14),
+          color: selected
+              ? (isDark ? const Color(0xFF1A3D36) : const Color(0xFFE9F4EE))
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(16),
           child: InkWell(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(16),
             onTap: () {
               if (onNavigate != null) {
                 if (isDrawer) Navigator.of(context).pop();
@@ -146,25 +203,38 @@ class AdminSidebar extends StatelessWidget {
               navigationProvider.setIndex(item.index);
               if (isDrawer) Navigator.of(context).pop();
             },
-            child: SizedBox(
-              height: 44,
-              child: Row(
+              child: SizedBox(
+                height: 48,
+                child: Row(
                 mainAxisAlignment:
                     collapsed ? MainAxisAlignment.center : MainAxisAlignment.start,
                 children: [
+                  if (selected && !collapsed)
+                    Container(
+                      width: 4,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        color: isDark ? Colors.white : AquaponicsColors.mossGreen,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
                   if (!collapsed) const SizedBox(width: 12),
                   Icon(
                     item.icon,
                     size: 20,
-                    color: selected ? Colors.white : defaultIconColor,
+                    color: selected
+                        ? (isDark ? Colors.white : AquaponicsColors.mossGreen)
+                        : defaultIconColor,
                   ),
                   if (!collapsed) ...[
                     const SizedBox(width: 12),
                     Text(
                       item.label,
                       style: TextStyle(
-                        color: selected ? Colors.white : defaultTextColor,
-                        fontWeight: FontWeight.w600,
+                        color: selected
+                            ? (isDark ? Colors.white : AquaponicsColors.mossGreen)
+                            : defaultTextColor,
+                        fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
                       ),
                     ),
                   ],

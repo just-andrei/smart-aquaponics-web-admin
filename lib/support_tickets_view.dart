@@ -1,7 +1,18 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
-const _teal = Color(0xFF0097A7);
+import 'aquaponics_colors.dart';
+
+const _primaryBlue = AquaponicsColors.waterBlue;
+const _urgentRed = Color(0xFFDC2626);
+const _successGreen = AquaponicsColors.freshGreen;
+
+const _categoryIcons = <String, IconData>{
+  'sensor': Icons.sensors_rounded,
+  'actuator': Icons.settings_input_component_rounded,
+  'fish': Icons.set_meal_rounded,
+  'plant': Icons.eco_rounded,
+};
 
 String _firebaseErrorMessage(Object error) {
   if (error is FirebaseException) {
@@ -31,6 +42,26 @@ class _SupportTicketsViewState extends State<SupportTicketsView> {
   String _safeString(dynamic value, {String fallback = '-'}) {
     final text = value?.toString().trim() ?? '';
     return text.isEmpty ? fallback : text;
+  }
+
+  BoxDecoration _panelDecoration(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return BoxDecoration(
+      color: isDark ? const Color(0xCC173128) : AquaponicsColors.glassAccent,
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(
+        color: isDark
+            ? const Color(0xFF28463E)
+            : AquaponicsColors.adminBorder,
+      ),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withValues(alpha: isDark ? 0.18 : 0.08),
+          blurRadius: 22,
+          offset: Offset(0, 10),
+        ),
+      ],
+    );
   }
 
   String _safeNamePart(dynamic value) => _safeString(value, fallback: '');
@@ -69,13 +100,26 @@ class _SupportTicketsViewState extends State<SupportTicketsView> {
     return fromTicket;
   }
 
-  int _nextTicketId(
+  String _ticketDisplayId(Map<String, dynamic> data) {
+    final ticketNumber = data['ticketNumber'];
+    if (ticketNumber != null) {
+      final parsed = int.tryParse(ticketNumber.toString());
+      if (parsed != null && parsed > 0) return parsed.toString();
+    }
+    final legacyId = _safeString(data['ticket_id'], fallback: '');
+    if (legacyId.isEmpty) return '-';
+    return legacyId;
+  }
+
+  int _nextTicketNumber(
     List<QueryDocumentSnapshot<Map<String, dynamic>>> activeDocs,
     List<QueryDocumentSnapshot<Map<String, dynamic>>> historyDocs,
   ) {
     var maxNumericId = 0;
     for (final doc in [...activeDocs, ...historyDocs]) {
-      final raw = _safeString(doc.data()['ticket_id'], fallback: '');
+      final data = doc.data();
+      final raw = data['ticketNumber']?.toString().trim() ??
+          _safeString(data['ticket_id'], fallback: '');
       final parsed = int.tryParse(raw);
       if (parsed != null && parsed > maxNumericId) {
         maxNumericId = parsed;
@@ -98,7 +142,7 @@ class _SupportTicketsViewState extends State<SupportTicketsView> {
     final reportedBy = reportedByFromUser.isEmpty
         ? _safeString(data['reported_by'], fallback: '')
         : reportedByFromUser;
-    final ticketId = _safeString(data['ticket_id'], fallback: '');
+    final ticketId = _ticketDisplayId(data);
     final priority = _safeString(data['priority'], fallback: '');
     final category = _safeString(data['category'], fallback: '');
 
@@ -183,7 +227,7 @@ class _SupportTicketsViewState extends State<SupportTicketsView> {
                     usersByUserId[doc.id] = data;
                   }
 
-                  final nextTicketId = _nextTicketId(activeDocs, historyDocs).toString();
+                  final nextTicketId = _nextTicketNumber(activeDocs, historyDocs).toString();
 
                   return Column(
                     children: [
@@ -192,8 +236,9 @@ class _SupportTicketsViewState extends State<SupportTicketsView> {
                         alignment: Alignment.centerLeft,
                         child: const TabBar(
                           isScrollable: true,
-                          labelColor: _teal,
-                          indicatorColor: _teal,
+                          labelColor: _primaryBlue,
+                          indicatorColor: _primaryBlue,
+                          labelStyle: TextStyle(fontWeight: FontWeight.w600),
                           tabs: [
                             Tab(text: 'Active Tickets'),
                             Tab(text: 'Ticket History'),
@@ -240,41 +285,45 @@ class _SupportTicketsViewState extends State<SupportTicketsView> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                _searchField(controller: _activeSearchCtrl, label: 'Search by Reported By or Ticket ID'),
-                _filterDropdown(
-                  label: 'Priority',
-                  value: _activePriorityFilter,
-                  items: const [_all, 'Urgent', 'Normal'],
-                  onChanged: (value) {
-                    if (value == null) return;
-                    setState(() => _activePriorityFilter = value);
-                  },
-                ),
-                _filterDropdown(
-                  label: 'Category',
-                  value: _activeCategoryFilter,
-                  items: const [_all, 'Sensor', 'Actuator', 'Fish', 'Plant'],
-                  onChanged: (value) {
-                    if (value == null) return;
-                    setState(() => _activeCategoryFilter = value);
-                  },
-                ),
-                FilledButton.icon(
-                  onPressed: () => _showTicketDialog(context: context, nextTicketId: nextTicketId),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: _teal,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: _panelDecoration(context),
+              child: Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  _searchField(controller: _activeSearchCtrl, label: 'Search by grower or ticket #'),
+                  _filterDropdown(
+                    label: 'Priority',
+                    value: _activePriorityFilter,
+                    items: const [_all, 'Urgent', 'Normal'],
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setState(() => _activePriorityFilter = value);
+                    },
                   ),
-                  icon: const Icon(Icons.add),
-                  label: const Text('Create Ticket'),
-                ),
-              ],
+                  _filterDropdown(
+                    label: 'Category',
+                    value: _activeCategoryFilter,
+                    items: const [_all, 'Sensor', 'Actuator', 'Fish', 'Plant'],
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setState(() => _activeCategoryFilter = value);
+                    },
+                  ),
+                  FilledButton.icon(
+                    onPressed: () => _showTicketDialog(context: context, nextTicketId: nextTicketId),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AquaponicsColors.mossGreen,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+                    ),
+                    icon: const Icon(Icons.add_rounded),
+                    label: const Text('Create Ticket'),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 8),
             ValueListenableBuilder<TextEditingValue>(
@@ -357,31 +406,35 @@ class _SupportTicketsViewState extends State<SupportTicketsView> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                _searchField(controller: _historySearchCtrl, label: 'Search by Reported By or Ticket ID'),
-                _filterDropdown(
-                  label: 'Priority',
-                  value: _historyPriorityFilter,
-                  items: const [_all, 'Urgent', 'Normal'],
-                  onChanged: (value) {
-                    if (value == null) return;
-                    setState(() => _historyPriorityFilter = value);
-                  },
-                ),
-                _filterDropdown(
-                  label: 'Category',
-                  value: _historyCategoryFilter,
-                  items: const [_all, 'Sensor', 'Actuator', 'Fish', 'Plant'],
-                  onChanged: (value) {
-                    if (value == null) return;
-                    setState(() => _historyCategoryFilter = value);
-                  },
-                ),
-              ],
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: _panelDecoration(context),
+              child: Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  _searchField(controller: _historySearchCtrl, label: 'Search by grower or ticket #'),
+                  _filterDropdown(
+                    label: 'Priority',
+                    value: _historyPriorityFilter,
+                    items: const [_all, 'Urgent', 'Normal'],
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setState(() => _historyPriorityFilter = value);
+                    },
+                  ),
+                  _filterDropdown(
+                    label: 'Category',
+                    value: _historyCategoryFilter,
+                    items: const [_all, 'Sensor', 'Actuator', 'Fish', 'Plant'],
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setState(() => _historyCategoryFilter = value);
+                    },
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 8),
             ValueListenableBuilder<TextEditingValue>(
@@ -447,21 +500,36 @@ class _SupportTicketsViewState extends State<SupportTicketsView> {
   }
 
   Widget _searchField({required TextEditingController controller, required String label}) {
-    final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return SizedBox(
-      width: 300,
+      width: 320,
       child: TextField(
         controller: controller,
         decoration: InputDecoration(
           labelText: label,
-          prefixIcon: Icon(Icons.search, color: scheme.primary),
+          prefixIcon: const Icon(Icons.search_rounded, color: AquaponicsColors.mossGreen),
           suffixIcon: IconButton(
-            icon: const Icon(Icons.clear),
+            icon: const Icon(Icons.close_rounded),
             onPressed: () => controller.clear(),
           ),
-          border: const OutlineInputBorder(),
-          enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: scheme.primary)),
-          focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: scheme.primary, width: 2)),
+          filled: true,
+          fillColor: isDark ? const Color(0xFF10211C) : Colors.white,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide.none,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide(
+              color: isDark
+                  ? const Color(0xFF28463E)
+                  : AquaponicsColors.adminBorder,
+            ),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: const BorderSide(color: AquaponicsColors.mossGreen, width: 1.4),
+          ),
         ),
       ),
     );
@@ -480,96 +548,159 @@ class _SupportTicketsViewState extends State<SupportTicketsView> {
     final userData = usersByUserId[storedUserId];
     final userId = _displayUserId(data, userData);
     final reportedByFromUser = _reportedByFromUser(userData);
-    final reportedBy = reportedByFromUser.isEmpty ? _safeString(data['reported_by']) : reportedByFromUser;
+    final reportedBy = reportedByFromUser.isEmpty
+        ? _safeString(data['reported_by'])
+        : reportedByFromUser;
     final priority = _safeString(data['priority']);
-    final status = _safeString(data['status'], fallback: showActions ? 'Open' : 'Resolved');
-    final priorityBg = priority == 'Urgent' ? _teal.withValues(alpha: 0.16) : const Color(0xFFE0E0E0);
-    final priorityTextColor = priority == 'Urgent' ? _teal : const Color(0xFF616161);
-
+    final status = _safeString(
+      data['status'],
+      fallback: showActions ? 'Open' : 'Resolved',
+    );
+    final category = _safeString(data['category']).toLowerCase();
+    final isUrgent = priority.toLowerCase() == 'urgent';
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final scheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    final leftBorderColor = showActions
+        ? (isUrgent ? _urgentRed : _primaryBlue)
+        : _successGreen;
+
+    final priorityBg = isUrgent
+        ? (isDark ? const Color(0xFF450A0A) : const Color(0xFFFEF2F2))
+        : (isDark ? const Color(0xFF0C2A4A) : const Color(0xFFEFF6FF));
+    final priorityTextColor = isUrgent ? _urgentRed : const Color(0xFF0369A1);
+
+    final statusBg = showActions
+        ? (isDark ? const Color(0xFF0C2A4A) : const Color(0xFFEFF6FF))
+        : (isDark ? const Color(0xFF14532D) : const Color(0xFFDCFCE7));
+    final statusTextColor =
+        showActions ? const Color(0xFF0369A1) : _successGreen;
+
+    final catIcon =
+        _categoryIcons[category] ?? Icons.help_outline_rounded;
+
     return SizedBox(
       width: 420,
-      child: Container(
-        decoration: BoxDecoration(
-          color: scheme.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: scheme.primary.withOpacity(0.5), width: 1.5),
+      child: Card(
+        elevation: 0,
+        margin: EdgeInsets.zero,
+        color: scheme.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(color: scheme.outlineVariant),
         ),
-        child: Card(
-          color: scheme.surface,
-          elevation: 0,
-          margin: EdgeInsets.zero,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        _safeString(data['title']),
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
+                Container(width: 4, color: leftBorderColor),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(catIcon, size: 15, color: scheme.onSurfaceVariant),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                _safeString(data['title']),
+                                style: textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: priorityBg,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(priority, style: TextStyle(color: priorityTextColor)),
-                    ),
-                    const SizedBox(width: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: _teal.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(status, style: const TextStyle(color: _teal)),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                _kv('Ticket ID', _safeString(data['ticket_id'])),
-                _kv('Category', _safeString(data['category'])),
-                _kv('Reported At', _formatDateTime(data['reported_at'])),
-                _kv('Reported By', reportedBy),
-                _kv('User ID', userId),
-                if (!showActions) _kv('Resolved At', _formatDateTime(data['resolved_at'])),
-                const SizedBox(height: 8),
-                Text(_safeString(data['description']), maxLines: 3, overflow: TextOverflow.ellipsis),
-                if (showActions) ...[
-                  const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      FilledButton(
-                        onPressed: onEdit,
-                        style: FilledButton.styleFrom(
-                          backgroundColor: _teal,
-                          foregroundColor: Colors.white,
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 3,
+                              ),
+                              decoration: BoxDecoration(
+                                color: priorityBg,
+                                borderRadius: BorderRadius.circular(5),
+                              ),
+                              child: Text(
+                                priority,
+                                style: textTheme.labelSmall?.copyWith(
+                                  color: priorityTextColor,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 5),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 3,
+                              ),
+                              decoration: BoxDecoration(
+                                color: statusBg,
+                                borderRadius: BorderRadius.circular(5),
+                              ),
+                              child: Text(
+                                status,
+                                style: textTheme.labelSmall?.copyWith(
+                                  color: statusTextColor,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                        child: const Text('Edit'),
-                      ),
-                      const SizedBox(width: 8),
-                      FilledButton(
-                        onPressed: onResolve,
-                        style: FilledButton.styleFrom(
-                          backgroundColor: _teal,
-                          foregroundColor: Colors.white,
+                        const SizedBox(height: 10),
+                        _kv('Ticket ID', '#${_ticketDisplayId(data)}'),
+                        _kv('Category', _safeString(data['category'])),
+                        _kv('Reported At', _formatDateTime(data['reported_at'])),
+                        _kv('Reported By', reportedBy),
+                        _kv('User ID', userId),
+                        if (!showActions)
+                          _kv(
+                            'Resolved At',
+                            _formatDateTime(data['resolved_at']),
+                          ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _safeString(data['description']),
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                          style: textTheme.bodySmall?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                          ),
                         ),
-                        child: const Text('Resolved'),
-                      ),
-                    ],
+                        if (showActions) ...[
+                          const SizedBox(height: 12),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              OutlinedButton(
+                                onPressed: onEdit,
+                                child: const Text('Edit'),
+                              ),
+                              const SizedBox(width: 8),
+                              FilledButton.icon(
+                                onPressed: onResolve,
+                                icon: const Icon(Icons.check_rounded, size: 15),
+                                label: const Text('Resolve'),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: _successGreen,
+                                  foregroundColor: Colors.white,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
-                ],
+                ),
               ],
             ),
           ),
@@ -584,19 +715,34 @@ class _SupportTicketsViewState extends State<SupportTicketsView> {
     required List<String> items,
     required ValueChanged<String?> onChanged,
   }) {
-    final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return SizedBox(
-      width: 140,
+      width: 150,
       child: DropdownButtonFormField<String>(
         initialValue: value,
         items: items.map((item) => DropdownMenuItem<String>(value: item, child: Text(item))).toList(),
         onChanged: onChanged,
         decoration: InputDecoration(
           labelText: label,
-          border: const OutlineInputBorder(),
-          enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: scheme.primary)),
-          focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: scheme.primary, width: 2)),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+          filled: true,
+          fillColor: isDark ? const Color(0xFF10211C) : Colors.white,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide.none,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide(
+              color: isDark
+                  ? const Color(0xFF28463E)
+                  : AquaponicsColors.adminBorder,
+            ),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: const BorderSide(color: AquaponicsColors.mossGreen, width: 1.4),
+          ),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         ),
       ),
     );
@@ -633,7 +779,7 @@ class _SupportTicketsViewState extends State<SupportTicketsView> {
           TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('No')),
           FilledButton(
             onPressed: () => Navigator.pop(dialogContext, true),
-            style: FilledButton.styleFrom(backgroundColor: _teal, foregroundColor: Colors.white),
+            style: FilledButton.styleFrom(backgroundColor: _primaryBlue, foregroundColor: Colors.white),
             child: const Text('Yes'),
           ),
         ],
@@ -791,8 +937,12 @@ class _TicketDialogState extends State<_TicketDialog> {
       return;
     }
 
+    final existingData = widget.document?.data() ?? const <String, dynamic>{};
+    final currentTicketNumber = _isEditing
+        ? ((existingData['ticketNumber'] ?? existingData['ticket_id'])?.toString().trim() ?? '')
+        : widget.nextTicketId;
     final currentTicketId = _isEditing
-        ? (widget.document!.data()?['ticket_id']?.toString().trim() ?? '')
+        ? (existingData['ticket_id']?.toString().trim() ?? currentTicketNumber)
         : widget.nextTicketId;
     final payload = <String, dynamic>{
       'title': _titleCtrl.text.trim(),
@@ -801,6 +951,10 @@ class _TicketDialogState extends State<_TicketDialog> {
       'priority': _selectedPriority,
       'status': 'Open',
       'ticket_id': currentTicketId.isEmpty ? widget.nextTicketId : currentTicketId,
+      'ticketNumber': int.tryParse(
+            currentTicketNumber.isEmpty ? widget.nextTicketId : currentTicketNumber,
+          ) ??
+          int.parse(widget.nextTicketId),
       'user_id': _selectedUserId,
       'reported_by': _reportedByCtrl.text.trim(),
       'updated_at': FieldValue.serverTimestamp(),
@@ -829,7 +983,7 @@ class _TicketDialogState extends State<_TicketDialog> {
   @override
   Widget build(BuildContext context) {
     final displayTicketId = _isEditing
-        ? (widget.document?.data()?['ticket_id']?.toString() ?? widget.nextTicketId)
+        ? ((widget.document?.data()?['ticketNumber'] ?? widget.document?.data()?['ticket_id'])?.toString() ?? widget.nextTicketId)
         : widget.nextTicketId;
 
     return Dialog(
@@ -854,7 +1008,7 @@ class _TicketDialogState extends State<_TicketDialog> {
                     border: Border.all(color: const Color(0xFFB0BEC5)),
                     borderRadius: BorderRadius.circular(6),
                   ),
-                  child: Text('Ticket ID: $displayTicketId', style: const TextStyle(fontWeight: FontWeight.w600)),
+                  child: Text('Ticket ID: #$displayTicketId', style: const TextStyle(fontWeight: FontWeight.w600)),
                 ),
                 const SizedBox(height: 16),
                 _textField(_titleCtrl, 'Title'),
@@ -912,11 +1066,11 @@ class _TicketDialogState extends State<_TicketDialog> {
                           controller: _userSearchCtrl,
                           decoration: const InputDecoration(
                             labelText: 'Search User (user_id or name)',
-                            prefixIcon: Icon(Icons.search, color: _teal),
+                            prefixIcon: Icon(Icons.search, color: _primaryBlue),
                             border: OutlineInputBorder(),
-                            enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: _teal)),
+                            enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: _primaryBlue)),
                             focusedBorder: OutlineInputBorder(
-                              borderSide: BorderSide(color: _teal, width: 2),
+                              borderSide: BorderSide(color: _primaryBlue, width: 2),
                             ),
                           ),
                           onChanged: (_) => setState(() {}),
@@ -966,7 +1120,7 @@ class _TicketDialogState extends State<_TicketDialog> {
                     const SizedBox(width: 10),
                     FilledButton(
                       onPressed: _save,
-                      style: FilledButton.styleFrom(backgroundColor: _teal, foregroundColor: Colors.white),
+                      style: FilledButton.styleFrom(backgroundColor: _primaryBlue, foregroundColor: Colors.white),
                       child: Text(_isEditing ? 'Save Changes' : 'Create'),
                     ),
                   ],
@@ -984,7 +1138,7 @@ class _TicketDialogState extends State<_TicketDialog> {
       labelText: label,
       border: const OutlineInputBorder(),
       enabledBorder: const OutlineInputBorder(borderSide: BorderSide(color: Color(0xFFB0BEC5))),
-      focusedBorder: const OutlineInputBorder(borderSide: BorderSide(color: _teal, width: 2)),
+      focusedBorder: const OutlineInputBorder(borderSide: BorderSide(color: _primaryBlue, width: 2)),
     );
   }
 
@@ -1013,7 +1167,7 @@ class _TicketDialogState extends State<_TicketDialog> {
       initialValue: value,
       items: items.map((item) => DropdownMenuItem<String>(value: item, child: Text(item))).toList(),
       onChanged: onChanged,
-      iconEnabledColor: _teal,
+      iconEnabledColor: _primaryBlue,
       decoration: _inputDecoration(label),
       validator: (v) => v == null || v.isEmpty ? 'Required' : null,
     );

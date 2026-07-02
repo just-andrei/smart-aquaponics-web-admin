@@ -1,0 +1,115 @@
+import 'compatibility_models.dart';
+
+const fishProfiles = <String, FishProfile>{
+  'tilapia': FishProfile(
+    id: 'tilapia',
+    name: 'Tilapia',
+    phRange: NumericRange(min: 6.5, max: 8.5),
+    temperatureRange: NumericRange(min: 24.0, max: 32.0),
+    minDissolvedOxygen: 5.0,
+    maxAmmonia: 1.0,
+    notes:
+        'Warm-water fish that performs well in resilient community systems.',
+    growthStages: [
+      GrowthStageProfile(
+        id: 'small',
+        name: 'Small',
+        minWeightGrams: 5,
+        maxWeightGrams: 20,
+        lengthGuide: '5-10 cm',
+        feedingPercentage: 0.05,
+      ),
+      GrowthStageProfile(
+        id: 'medium',
+        name: 'Medium',
+        minWeightGrams: 20,
+        maxWeightGrams: 100,
+        lengthGuide: '10-20 cm',
+        feedingPercentage: 0.03,
+      ),
+      GrowthStageProfile(
+        id: 'large',
+        name: 'Large',
+        minWeightGrams: 100,
+        lengthGuide: '20 cm+',
+        feedingPercentage: 0.018,
+      ),
+    ],
+    defaultFeedingsPerDay: 3,
+    stockingKgPer1000LRange: NumericRange(min: 20, max: 30),
+  ),
+  'catfish': FishProfile(
+    id: 'catfish',
+    name: 'Catfish',
+    phRange: NumericRange(min: 6.5, max: 8.0),
+    temperatureRange: NumericRange(min: 23.0, max: 30.0),
+    minDissolvedOxygen: 4.0,
+    maxAmmonia: 1.2,
+    notes:
+        'Tolerant fish option, but still benefits from stable oxygen and low ammonia.',
+    growthStages: [
+      GrowthStageProfile(
+        id: 'small',
+        name: 'Small',
+        minWeightGrams: 5,
+        maxWeightGrams: 20,
+        lengthGuide: '5-10 cm',
+        feedingPercentage: 0.05,
+      ),
+      GrowthStageProfile(
+        id: 'medium',
+        name: 'Medium',
+        minWeightGrams: 20,
+        maxWeightGrams: 100,
+        lengthGuide: '10-20 cm',
+        feedingPercentage: 0.03,
+      ),
+      GrowthStageProfile(
+        id: 'large',
+        name: 'Large',
+        minWeightGrams: 100,
+        lengthGuide: '20 cm+',
+        feedingPercentage: 0.018,
+      ),
+    ],
+    defaultFeedingsPerDay: 2,
+    stockingKgPer1000LRange: NumericRange(min: 20, max: 28),
+  ),
+  'prawn': FishProfile(
+    id: 'prawn',
+    name: 'Prawn',
+    phRange: NumericRange(min: 7.0, max: 8.5),
+    temperatureRange: NumericRange(min: 26.0, max: 31.0),
+    minDissolvedOxygen: 5.0,
+    maxAmmonia: 0.8,
+    notes:
+        'Sensitive to oxygen drops and water-quality swings, but can fit warm systems with careful management.',
+    growthStages: [
+      GrowthStageProfile(
+        id: 'small',
+        name: 'Small',
+        minWeightGrams: 5,
+        maxWeightGrams: 20,
+        lengthGuide: '5-10 cm',
+        feedingPercentage: 0.05,
+      ),
+      GrowthStageProfile(
+        id: 'medium',
+        name: 'Medium',
+        minWeightGrams: 20,
+        maxWeightGrams: 100,
+        lengthGuide: '10-20 cm',
+        feedingPercentage: 0.03,
+      ),
+      GrowthStageProfile(
+        id: 'large',
+        name: 'Large',
+        minWeightGrams: 100,
+        lengthGuide: '20 cm+',
+        feedingPercentage: 0.017,
+      ),
+    ],
+    defaultFeedingsPerDay: 3,
+    stockingKgPer1000LRange: NumericRange(min: 18, max: 24),
+  ),
+};

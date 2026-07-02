@@ -2,8 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 
+import 'app_theme_controller.dart';
 import 'admin_dashboard.dart';
+import 'about.dart';
+import 'contact.dart';
 import 'firebase_options.dart';
+import 'public_page_shell.dart';
 import 'user_account_service.dart';
 
 class LoginPage extends StatefulWidget {
@@ -52,6 +56,8 @@ class _LoginPageState extends State<LoginPage> {
   // Controllers
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+  final FocusNode _emailFocusNode = FocusNode();
+  final FocusNode _passwordFocusNode = FocusNode();
 
   @override
   void initState() {
@@ -63,6 +69,8 @@ class _LoginPageState extends State<LoginPage> {
   void dispose() {
     _usernameController.dispose();
     _passwordController.dispose();
+    _emailFocusNode.dispose();
+    _passwordFocusNode.dispose();
     super.dispose();
   }
 
@@ -184,8 +192,8 @@ class _LoginPageState extends State<LoginPage> {
           transitionDuration: const Duration(milliseconds: 300),
           pageBuilder: (context, animation, secondaryAnimation) =>
               AdminDashboard(
-                themeMode: widget.themeMode,
-                onThemeChanged: widget.onThemeChanged,
+                themeMode: appThemeMode.value,
+                onThemeChanged: setAppThemeMode,
               ),
           transitionsBuilder: (context, animation, secondaryAnimation, child) {
             return FadeTransition(
@@ -314,25 +322,41 @@ class _LoginPageState extends State<LoginPage> {
     Navigator.of(context).pushReplacementNamed('/landing');
   }
 
-  Future<void> _onBackPressed() async {
-    if (_isForgotPasswordMode) {
-      _goToMain();
+  void _navigate(String destination) {
+    switch (destination) {
+      case 'Home':
+        _goToMain();
+        break;
+      case 'About Us':
+        Navigator.of(context).pushReplacement(AboutPage.createRoute());
+        break;
+      case 'Contact Us':
+        Navigator.of(context).pushReplacement(ContactPage.createRoute());
+        break;
+      case 'Login':
+        break;
+    }
+  }
+
+  void _submitCurrentMode() {
+    if (_isLoading || !_isFirebaseReady) {
       return;
     }
-    _goToMain();
+    if (_isForgotPasswordMode) {
+      _sendResetPassword();
+      return;
+    }
+    _login();
   }
 
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
-    final scale = (screenWidth / 1200).clamp(0.6, 1.0);
-    final backFontSize = (16 * scale).clamp(11.0, 16.0);
-    final backIconSize = (24 * scale).clamp(16.0, 24.0);
-    final eyeIconSize = (24 * scale).clamp(16.0, 24.0);
-    final headerFontSize = (22 * scale).clamp(14.0, 22.0);
-    final titleFontSize = (28 * scale).clamp(18.0, 28.0);
-    final fieldFontSize = (16 * scale).clamp(11.0, 16.0);
-    final buttonFontSize = (16 * scale).clamp(11.0, 16.0);
+    final scale = (screenWidth / 1200).clamp(0.8, 1.0);
+    final eyeIconSize = (24 * scale).clamp(18.0, 24.0);
+    final titleFontSize = screenWidth < 700 ? 30.0 : 34.0;
+    final bodyFontSize = screenWidth < 700 ? 15.0 : 16.0;
+    final cardWidth = screenWidth < 560 ? double.infinity : 470.0;
 
     return PopScope(
       canPop: !_isForgotPasswordMode,
@@ -341,337 +365,204 @@ class _LoginPageState extends State<LoginPage> {
           _goToMain();
         }
       },
-      child: Scaffold(
-        body: Stack(
-          children: [
-            // BACKGROUND IMAGE
-            Container(
-              decoration: const BoxDecoration(
-                image: DecorationImage(
-                  image: AssetImage('image/aquaponics.png'),
-                  fit: BoxFit.cover,
-                ),
-              ),
+      child: PublicPageScaffold(
+        currentPage: 'Login',
+        onNavigate: _navigate,
+        maxContentWidth: 700,
+        centerVertically: true,
+        child: SizedBox(
+          width: cardWidth,
+          child: PublicGlassCard(
+            padding: EdgeInsets.symmetric(
+              horizontal: screenWidth < 560 ? 22 : 34,
+              vertical: screenWidth < 560 ? 24 : 34,
             ),
-
-            // DARK OVERLAY
-            Container(color: Colors.black.withOpacity(0.4)),
-
-            Column(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // HEADER
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 40,
-                    vertical: 20,
+                Text(
+                  _isForgotPasswordMode ? 'Reset Password' : 'Login',
+                  style: TextStyle(
+                    fontSize: titleFontSize,
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFF1D2A24),
                   ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF0f2027).withOpacity(0.92),
-                    border: Border(
-                      bottom: BorderSide(color: Colors.white.withOpacity(0.1)),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  _isForgotPasswordMode
+                      ? 'Enter your registered email and we will send a reset link.'
+                      : 'Please sign in with your account details.',
+                  style: TextStyle(
+                    color: const Color(0xFF66746D),
+                    fontSize: bodyFontSize,
+                    height: 1.55,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                _buildTextField(
+                  'Email',
+                  _usernameController,
+                  focusNode: _emailFocusNode,
+                  textInputAction: _isForgotPasswordMode
+                      ? TextInputAction.done
+                      : TextInputAction.next,
+                  onSubmitted: (_) {
+                    if (_isForgotPasswordMode) {
+                      _submitCurrentMode();
+                      return;
+                    }
+                    _passwordFocusNode.requestFocus();
+                  },
+                  onChanged: (_) {
+                    if (_loginFieldError != null) {
+                      setState(() => _loginFieldError = null);
+                    }
+                    if (_resetFieldError != null) {
+                      setState(() => _resetFieldError = null);
+                    }
+                  },
+                ),
+                if (_isForgotPasswordMode && _resetFieldError != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    _resetFieldError!,
+                    style: const TextStyle(
+                      color: Color(0xFFC14A4A),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      InkWell(
-                        onTap: _onBackPressed,
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.arrow_back,
-                              color: Colors.white,
-                              size: backIconSize,
-                            ),
-                            SizedBox(width: 8),
-                            Text(
-                              "Back",
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: backFontSize,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Text(
-                        "Aquaponics",
-                        style: TextStyle(
-                          fontSize: headerFontSize,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                      const SizedBox(width: 50),
-                    ],
-                  ),
-                ),
-
-                // CENTERED LOGIN BOX
-                Expanded(
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      bool isSmallScreen = constraints.maxWidth < 600;
-
-                      return SingleChildScrollView(
-                        child: ConstrainedBox(
-                          constraints: BoxConstraints(
-                            minHeight: constraints.maxHeight,
-                          ),
-                          child: Align(
-                            alignment: const Alignment(0, -0.2),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 40,
-                                vertical: 50,
-                              ),
-                              margin: EdgeInsets.symmetric(
-                                horizontal: isSmallScreen ? 20 : 0,
-                                vertical: 0,
-                              ),
-                              width: isSmallScreen ? double.infinity : 450,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF0f2027).withOpacity(0.5),
-                                borderRadius: BorderRadius.circular(40),
-                                border: Border.all(
-                                  color: Colors.white.withOpacity(0.1),
-                                ),
-                              ),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    _isForgotPasswordMode
-                                        ? "Reset Password"
-                                        : "Login",
-                                    style: TextStyle(
-                                      fontSize: titleFontSize,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 16),
-                                  Text(
-                                    _isForgotPasswordMode
-                                        ? "Enter your registered email and we will send a reset link."
-                                        : "Please sign in with your account details.",
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                      color: Colors.white70,
-                                      fontSize: (14 * scale).clamp(10.0, 14.0),
-                                      height: 1.35,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 24),
-                                  _buildTextField(
-                                    _isForgotPasswordMode ? "Email" : "Email",
-                                    _usernameController,
-                                    fieldFontSize,
-                                    onChanged: (_) {
-                                      if (_loginFieldError != null) {
-                                        setState(() => _loginFieldError = null);
-                                      }
-                                      if (_resetFieldError != null) {
-                                        setState(() => _resetFieldError = null);
-                                      }
-                                    },
-                                  ),
-                                  if (_isForgotPasswordMode &&
-                                      _resetFieldError != null) ...[
-                                    const SizedBox(height: 8),
-                                    Align(
-                                      alignment: Alignment.centerLeft,
-                                      child: Text(
-                                        _resetFieldError!,
-                                        style: TextStyle(
-                                          color: const Color(0xFFFF8A8A),
-                                          fontSize: (13 * scale).clamp(
-                                            10.0,
-                                            13.0,
-                                          ),
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                  if (!_isForgotPasswordMode) ...[
-                                    const SizedBox(height: 16),
-                                    TextField(
-                                      controller: _passwordController,
-                                      onChanged: (_) {
-                                        if (_loginFieldError != null) {
-                                          setState(
-                                            () => _loginFieldError = null,
-                                          );
-                                        }
-                                      },
-                                      obscureText: _obscurePassword,
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontSize: fieldFontSize,
-                                      ),
-                                      decoration: InputDecoration(
-                                        hintText: "Password",
-                                        hintStyle: TextStyle(
-                                          color: Colors.white54,
-                                          fontSize: fieldFontSize,
-                                        ),
-                                        filled: true,
-                                        fillColor: Colors.white.withOpacity(
-                                          0.08,
-                                        ),
-                                        border: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            20,
-                                          ),
-                                          borderSide: BorderSide.none,
-                                        ),
-                                        suffixIcon: IconButton(
-                                          icon: Icon(
-                                            _obscurePassword
-                                                ? Icons.visibility_off
-                                                : Icons.visibility,
-                                            color: Colors.white70,
-                                            size: eyeIconSize,
-                                          ),
-                                          onPressed: () {
-                                            setState(() {
-                                              _obscurePassword =
-                                                  !_obscurePassword;
-                                            });
-                                          },
-                                        ),
-                                      ),
-                                    ),
-                                    if (_loginFieldError != null) ...[
-                                      const SizedBox(height: 8),
-                                      Align(
-                                        alignment: Alignment.centerLeft,
-                                        child: Text(
-                                          _loginFieldError!,
-                                          style: TextStyle(
-                                            color: const Color(0xFFFF8A8A),
-                                            fontSize: (13 * scale).clamp(
-                                              10.0,
-                                              13.0,
-                                            ),
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                    const SizedBox(height: 10),
-                                    Align(
-                                      alignment: Alignment.centerRight,
-                                      child: TextButton(
-                                        onPressed:
-                                            (_isLoading || !_isFirebaseReady)
-                                            ? null
-                                            : _enterForgotPasswordMode,
-                                        style: TextButton.styleFrom(
-                                          foregroundColor: Colors.tealAccent,
-                                          textStyle: TextStyle(
-                                            fontSize: (14 * scale).clamp(
-                                              10.0,
-                                              14.0,
-                                            ),
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 8,
-                                            vertical: 4,
-                                          ),
-                                          minimumSize: const Size(0, 0),
-                                          tapTargetSize:
-                                              MaterialTapTargetSize.shrinkWrap,
-                                        ),
-                                        child: const Text('Forget Password?'),
-                                      ),
-                                    ),
-                                  ],
-                                  SizedBox(
-                                    height: _isForgotPasswordMode ? 20 : 24,
-                                  ),
-                                  SizedBox(
-                                    width: double.infinity,
-                                    child: ElevatedButton(
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.tealAccent,
-                                        padding: const EdgeInsets.symmetric(
-                                          vertical: 16,
-                                        ),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            30,
-                                          ),
-                                        ),
-                                      ),
-                                      onPressed:
-                                          (_isLoading || !_isFirebaseReady)
-                                          ? null
-                                          : (_isForgotPasswordMode
-                                                ? _sendResetPassword
-                                                : _login),
-                                      child: _isLoading
-                                          ? const SizedBox(
-                                              height: 20,
-                                              width: 18,
-                                              child: CircularProgressIndicator(
-                                                strokeWidth: 2,
-                                                color: Colors.black,
-                                              ),
-                                            )
-                                          : Text(
-                                              _isForgotPasswordMode
-                                                  ? "Reset Password"
-                                                  : "Login",
-                                              style: TextStyle(
-                                                color: Colors.black,
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: buttonFontSize,
-                                              ),
-                                            ),
-                                    ),
-                                  ),
-                                  if (_isForgotPasswordMode) ...[
-                                    const SizedBox(height: 26),
-                                    TextButton(
-                                      onPressed: _isLoading
-                                          ? null
-                                          : _exitForgotPasswordMode,
-                                      style: TextButton.styleFrom(
-                                        foregroundColor: Colors.white70,
-                                        textStyle: TextStyle(
-                                          fontSize: (14 * scale).clamp(
-                                            10.0,
-                                            14.0,
-                                          ),
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 2,
-                                        ),
-                                        minimumSize: const Size(0, 0),
-                                        tapTargetSize:
-                                            MaterialTapTargetSize.shrinkWrap,
-                                      ),
-                                      child: const Text('Back to login'),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      );
+                ],
+                if (!_isForgotPasswordMode) ...[
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _passwordController,
+                    focusNode: _passwordFocusNode,
+                    onChanged: (_) {
+                      if (_loginFieldError != null) {
+                        setState(() => _loginFieldError = null);
+                      }
                     },
+                    onSubmitted: (_) => _submitCurrentMode(),
+                    obscureText: _obscurePassword,
+                    textInputAction: TextInputAction.done,
+                    style: const TextStyle(
+                      color: Color(0xFF1D2A24),
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    decoration: publicInputDecoration(
+                      hintText: 'Password',
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _obscurePassword
+                              ? Icons.visibility_off_rounded
+                              : Icons.visibility_rounded,
+                          color: const Color(0xFF66746D),
+                          size: eyeIconSize,
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            _obscurePassword = !_obscurePassword;
+                          });
+                        },
+                      ),
+                    ),
+                  ),
+                  if (_loginFieldError != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      _loginFieldError!,
+                      style: const TextStyle(
+                        color: Color(0xFFC14A4A),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: (_isLoading || !_isFirebaseReady)
+                          ? null
+                          : _enterForgotPasswordMode,
+                      style: TextButton.styleFrom(
+                        foregroundColor: const Color(0xFF1E5D5A),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 4,
+                        ),
+                        minimumSize: const Size(0, 0),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        textStyle: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      child: const Text('Forgot Password?'),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 24),
+                PublicPageButton(
+                  label: _isForgotPasswordMode ? 'Reset Password' : 'Login',
+                  onPressed: (_isLoading || !_isFirebaseReady)
+                      ? null
+                      : (_isForgotPasswordMode ? _sendResetPassword : _login),
+                  busy: _isLoading,
+                  leading: Icon(
+                    _isForgotPasswordMode
+                        ? Icons.mark_email_read_rounded
+                        : Icons.login_rounded,
+                    size: 18,
                   ),
                 ),
+                if (_isForgotPasswordMode) ...[
+                  const SizedBox(height: 18),
+                  Center(
+                    child: TextButton(
+                      onPressed: _isLoading ? null : _exitForgotPasswordMode,
+                      style: TextButton.styleFrom(
+                        foregroundColor: const Color(0xFF66746D),
+                        textStyle: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      child: const Text('Back to login'),
+                    ),
+                  ),
+                ],
+                if (!_isFirebaseReady && _firebaseInitError == null) ...[
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Preparing secure sign-in...',
+                    style: TextStyle(
+                      color: Color(0xFF66746D),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+                if (_firebaseInitError != null) ...[
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Unable to initialize login right now. Please try again shortly.',
+                    style: TextStyle(
+                      color: Color(0xFFC14A4A),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      height: 1.4,
+                    ),
+                  ),
+                ],
               ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -679,24 +570,24 @@ class _LoginPageState extends State<LoginPage> {
 
   Widget _buildTextField(
     String hint,
-    TextEditingController controller,
-    double fontSize, {
+    TextEditingController controller, {
+    FocusNode? focusNode,
+    TextInputAction? textInputAction,
+    ValueChanged<String>? onSubmitted,
     ValueChanged<String>? onChanged,
   }) {
     return TextField(
       controller: controller,
+      focusNode: focusNode,
       onChanged: onChanged,
-      style: TextStyle(color: Colors.white, fontSize: fontSize),
-      decoration: InputDecoration(
-        hintText: hint,
-        hintStyle: TextStyle(color: Colors.white54, fontSize: fontSize),
-        filled: true,
-        fillColor: Colors.white.withOpacity(0.08),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(20),
-          borderSide: BorderSide.none,
-        ),
+      onSubmitted: onSubmitted,
+      textInputAction: textInputAction,
+      style: const TextStyle(
+        color: Color(0xFF1D2A24),
+        fontSize: 15,
+        fontWeight: FontWeight.w500,
       ),
+      decoration: publicInputDecoration(hintText: hint),
     );
   }
 }

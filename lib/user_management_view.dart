@@ -1,10 +1,10 @@
-import 'package:cloud_firestore/cloud_firestore.dart'; 
+﻿import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+import 'aquaponics_colors.dart';
 import 'grower_details_view.dart';
 import 'navigation_provider.dart';
 import 'user_account_service.dart';
-import 'user_system.dart';
 
 String _firebaseErrorMessage(Object error) {
   if (error is FirebaseException) {
@@ -115,6 +115,78 @@ class _UserManagementViewState extends State<UserManagementView> {
     return _sortUserIdAscending ? aId.compareTo(bId) : bId.compareTo(aId);
   }
 
+  Widget _overviewChip({
+    required BuildContext context,
+    required IconData icon,
+    required String label,
+    required String value,
+    Color color = AquaponicsColors.mossGreen,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final surfaceColor = isDark
+        ? const Color(0xFF182823)
+        : Colors.white;
+    final borderColor = isDark
+        ? const Color(0xFF28463E)
+        : AquaponicsColors.adminBorder;
+    final labelColor = isDark
+        ? const Color(0xFFA4C0B2)
+        : AquaponicsColors.greenhouseSubtext;
+    final valueColor = isDark
+        ? Colors.white
+        : AquaponicsColors.greenhouseText;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: surfaceColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: borderColor),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.18 : 0.06),
+            blurRadius: 18,
+            offset: Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: color, size: 18),
+          ),
+          const SizedBox(width: 10),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  color: labelColor,
+                  fontSize: 12,
+                ),
+              ),
+              Text(
+                value,
+                style: TextStyle(
+                  color: valueColor,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _searchCtrl.dispose();
@@ -123,6 +195,17 @@ class _UserManagementViewState extends State<UserManagementView> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final panelColor = isDark
+        ? const Color(0xCC173128)
+        : AquaponicsColors.glassAccent;
+    final panelBorderColor = isDark
+        ? const Color(0xFF28463E)
+        : AquaponicsColors.adminBorder;
+    final fieldFillColor = isDark
+        ? const Color(0xFF10211C)
+        : Colors.white;
+
     return Scaffold(
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
         stream: _firestore.collection('user').snapshots(),
@@ -146,6 +229,20 @@ class _UserManagementViewState extends State<UserManagementView> {
               .where((doc) => _matchesSearch(doc, query))
               .toList();
           allData.sort(_compareUserId);
+          final activeCount = allData.where((doc) {
+            return _safeString(doc.data()['status'], fallback: 'active')
+                    .toLowerCase() ==
+                'active';
+          }).length;
+
+          // Build a count map to detect duplicate user_ids
+          final userIdCount = <String, int>{};
+          for (final doc in snapshot.data?.docs ?? <QueryDocumentSnapshot<Map<String, dynamic>>>[]) {
+            final uid = _safeString(doc.data()['user_id'], fallback: '');
+            if (uid.isNotEmpty) {
+              userIdCount[uid] = (userIdCount[uid] ?? 0) + 1;
+            }
+          }
 
           QueryDocumentSnapshot<Map<String, dynamic>>? selectedDoc;
           for (final doc in allData) {
@@ -156,92 +253,155 @@ class _UserManagementViewState extends State<UserManagementView> {
           }
 
           return SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      OutlinedButton(
-                        onPressed: () => _showUserDialog(null),
-                        child: const Text('Create'),
+                Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: panelColor,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: panelBorderColor),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: isDark ? 0.18 : 0.08),
+                        blurRadius: 22,
+                        offset: Offset(0, 10),
                       ),
-                      if (_canUpdateOrDeleteGrowers)
-                        FilledButton(
-                          onPressed: selectedDoc == null
-                              ? null
-                              : () {
-                                  final data = selectedDoc!.data();
-                                  final fullName = _fullName(data);
-                                  final numericId = _numericUserId(
-                                    selectedDoc.data()['user_id'],
-                                  );
-                                  _deleteUser(
-                                    selectedDoc.id,
-                                    fullName,
-                                    numericId,
-                                  );
-                                },
-                          style: FilledButton.styleFrom(
-                            backgroundColor: Theme.of(
-                              context,
-                            ).colorScheme.error,
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Wrap(
+                        spacing: 12,
+                        runSpacing: 12,
+                        alignment: WrapAlignment.spaceBetween,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Wrap(
+                            spacing: 12,
+                            runSpacing: 12,
+                            children: [
+                              _overviewChip(
+                                context: context,
+                                icon: Icons.people_alt_rounded,
+                                label: 'Growers',
+                                value: '${allData.length} registered',
+                              ),
+                              _overviewChip(
+                                context: context,
+                                icon: Icons.eco_rounded,
+                                label: 'Active',
+                                value: '$activeCount operational',
+                                color: AquaponicsColors.freshGreen,
+                              ),
+                            ],
                           ),
-                          child: const Text('Delete'),
-                        ),
+                          Wrap(
+                            spacing: 10,
+                            runSpacing: 10,
+                            children: [
+                              OutlinedButton.icon(
+                                onPressed: () => _showUserDialog(null),
+                                icon: const Icon(Icons.person_add_alt_1_rounded),
+                                label: const Text('Create Grower'),
+                              ),
+                              if (_canUpdateOrDeleteGrowers)
+                                FilledButton.icon(
+                                  onPressed: selectedDoc == null
+                                      ? null
+                                      : () {
+                                          final data = selectedDoc!.data();
+                                          final fullName = _fullName(data);
+                                          final numericId = _numericUserId(
+                                            selectedDoc.data()['user_id'],
+                                          );
+                                          _deleteUser(
+                                            selectedDoc.id,
+                                            fullName,
+                                            numericId,
+                                          );
+                                        },
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: Theme.of(context).colorScheme.error,
+                                  ),
+                                  icon: const Icon(Icons.delete_outline_rounded),
+                                  label: const Text('Delete Selected'),
+                                ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 18),
+                      Wrap(
+                        spacing: 12,
+                        runSpacing: 12,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          SizedBox(
+                            width: 380,
+                            child: TextField(
+                              controller: _searchCtrl,
+                              onChanged: (_) => setState(() {}),
+                              decoration: InputDecoration(
+                                labelText: 'Search growers',
+                                hintText: 'Name, email, phone, or address',
+                                prefixIcon: const Icon(Icons.search_rounded),
+                                suffixIcon: IconButton(
+                                  icon: const Icon(Icons.close_rounded),
+                                  onPressed: () {
+                                    _searchCtrl.clear();
+                                    setState(() {});
+                                  },
+                                ),
+                                filled: true,
+                                fillColor: fieldFillColor,
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                  borderSide: BorderSide.none,
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                  borderSide: BorderSide(
+                                    color: panelBorderColor,
+                                  ),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                  borderSide: const BorderSide(
+                                    color: AquaponicsColors.mossGreen,
+                                    width: 1.4,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          OutlinedButton.icon(
+                            onPressed: () {
+                              setState(
+                                () => _sortUserIdAscending = !_sortUserIdAscending,
+                              );
+                            },
+                            icon: Icon(
+                              _sortUserIdAscending
+                                  ? Icons.arrow_upward
+                                  : Icons.arrow_downward,
+                              size: 16,
+                            ),
+                            label: Text(
+                              _sortUserIdAscending
+                                  ? 'User ID Ascending'
+                                  : 'User ID Descending',
+                            ),
+                          ),
+                        ],
+                      ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    SizedBox(
-                      width: 360,
-                      child: TextField(
-                        controller: _searchCtrl,
-                        onChanged: (_) => setState(() {}),
-                        decoration: InputDecoration(
-                          labelText: 'Search',
-                          prefixIcon: const Icon(Icons.search),
-                          suffixIcon: IconButton(
-                            icon: const Icon(Icons.clear),
-                            onPressed: () {
-                              _searchCtrl.clear();
-                              setState(() {});
-                            },
-                          ),
-                          border: const OutlineInputBorder(),
-                        ),
-                      ),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: () {
-                        setState(
-                          () => _sortUserIdAscending = !_sortUserIdAscending,
-                        );
-                      },
-                      icon: Icon(
-                        _sortUserIdAscending
-                            ? Icons.arrow_upward
-                            : Icons.arrow_downward,
-                        size: 16,
-                      ),
-                      label: Text(
-                        _sortUserIdAscending
-                            ? 'User ID Ascending'
-                            : 'User ID Descending',
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 16),
                 if (allData.isEmpty)
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 16),
@@ -284,6 +444,10 @@ class _UserManagementViewState extends State<UserManagementView> {
                         fallback: 'grower',
                       );
 
+                      final rawUserId = _safeString(data['user_id'], fallback: '');
+                      final isDuplicate = rawUserId.isNotEmpty &&
+                          (userIdCount[rawUserId] ?? 0) > 1;
+
                       return GrowerCard(
                         userDocId: doc.id,
                         userId: userId,
@@ -292,6 +456,7 @@ class _UserManagementViewState extends State<UserManagementView> {
                         address: address,
                         status: status,
                         role: role,
+                        isDuplicate: isDuplicate,
                         onSelect: () {
                           setState(() => _selectedDocId = doc.id);
                         },
@@ -418,41 +583,25 @@ class _UserManagementViewState extends State<UserManagementView> {
                   onPressed: !canDelete || isDeleting
                       ? null
                       : () async {
-                          setDialogState(() {
-                            isDeleting = true;
-                          });
+                          setDialogState(() => isDeleting = true);
                           try {
-                            final firestore = FirebaseFirestore.instance;
-                            final userRef = firestore.collection('user').doc(id);
-                            final systemsSnapshot =
-                                await userRef.collection('systems').get();
-
-                            for (final systemDoc in systemsSnapshot.docs) {
-                              final weeklySnapshot = await systemDoc.reference
-                                  .collection('weekly_logs')
-                                  .get();
-                              for (final weeklyDoc in weeklySnapshot.docs) {
-                                await weeklyDoc.reference.delete();
-                              }
-                              await systemDoc.reference.delete();
-                            }
-
-                            await userRef.delete();
+                            await _hardDeleteUser(
+                              uid: id,
+                              numericUserId: numericUserId,
+                            );
                             if (!rootContext.mounted) return;
                             Navigator.pop(dialogContext);
                             widget.navigationProvider.setIndex(1);
                             ScaffoldMessenger.of(rootContext).showSnackBar(
                               const SnackBar(
                                 content: Text(
-                                  'Grower and associated systems deleted successfully',
+                                  'Grower and all associated data deleted.',
                                 ),
                               ),
                             );
                           } on Object catch (e) {
                             if (!rootContext.mounted) return;
-                            setDialogState(() {
-                              isDeleting = false;
-                            });
+                            setDialogState(() => isDeleting = false);
                             ScaffoldMessenger.of(rootContext).showSnackBar(
                               SnackBar(
                                 content: Text(
@@ -500,6 +649,7 @@ class GrowerCard extends StatefulWidget {
   final String address;
   final String status;
   final String role;
+  final bool isDuplicate;
   final VoidCallback onSelect;
   final VoidCallback onView;
   final VoidCallback onEdit;
@@ -513,6 +663,7 @@ class GrowerCard extends StatefulWidget {
     required this.address,
     required this.status,
     required this.role,
+    this.isDuplicate = false,
     required this.onSelect,
     required this.onView,
     required this.onEdit,
@@ -528,7 +679,11 @@ class _GrowerCardState extends State<GrowerCard> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final elevation = _isHovered ? 2.4 : 1.2;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardColor = isDark ? const Color(0xFF182823) : Colors.white;
+    final borderColor = isDark
+        ? const Color(0xFF28463E)
+        : AquaponicsColors.adminBorder;
 
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
@@ -536,21 +691,35 @@ class _GrowerCardState extends State<GrowerCard> {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
         curve: Curves.easeOut,
+        transform: Matrix4.translationValues(0, _isHovered ? -3 : 0, 0),
         child: Card(
-          color: scheme.surface,
-          elevation: elevation,
+          color: cardColor,
+          elevation: 0,
+          surfaceTintColor: Colors.transparent,
           shadowColor: scheme.shadow,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(18),
           ),
           margin: const EdgeInsets.only(bottom: 12),
           child: Container(
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: scheme.primary, width: 1),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: _isHovered
+                    ? AquaponicsColors.mossGreen.withValues(alpha: 0.35)
+                    : borderColor,
+                width: 1,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: isDark ? 0.18 : 0.08),
+                  blurRadius: 20,
+                  offset: Offset(0, 10),
+                ),
+              ],
             ),
             child: Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(20),
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   final isCompact = constraints.maxWidth < 820;
@@ -559,6 +728,9 @@ class _GrowerCardState extends State<GrowerCard> {
                     email: widget.email,
                     address: widget.address,
                     userId: widget.userId,
+                    status: widget.status,
+                    isDuplicate: widget.isDuplicate,
+                    docId: widget.userDocId,
                   );
                   final statusMetrics = _GrowerStatusSection(
                     userDocId: widget.userDocId,
@@ -571,7 +743,7 @@ class _GrowerCardState extends State<GrowerCard> {
                   return InkWell(
                     borderRadius: BorderRadius.circular(16),
                     onTap: widget.onSelect,
-                    hoverColor: scheme.onSurface.withOpacity(0.04),
+                    hoverColor: scheme.onSurface.withValues(alpha: 0.04),
                     child: isCompact
                         ? Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -610,56 +782,128 @@ class _GrowerDetailsSection extends StatelessWidget {
     required this.email,
     required this.address,
     required this.userId,
+    required this.status,
+    required this.isDuplicate,
+    required this.docId,
   });
 
   final String fullName;
   final String email;
   final String address;
   final String userId;
+  final String status;
+  final bool isDuplicate;
+  final String docId;
+
+  Color _avatarColor(String seed) {
+    const colors = [
+      Color(0xFF1F64D8),
+      Color(0xFF0EA5A0),
+      Color(0xFF7C3AED),
+      Color(0xFFD97706),
+      Color(0xFF16A34A),
+      Color(0xFFDC2626),
+    ];
+    final hash = seed.codeUnits.fold(0, (prev, c) => prev + c);
+    return colors[hash % colors.length];
+  }
+
+  String _initials(String name) {
+    final parts = name.trim().split(' ').where((p) => p.isNotEmpty).toList();
+    if (parts.isEmpty) return '?';
+    if (parts.length == 1) return parts[0][0].toUpperCase();
+    return '${parts[0][0]}${parts[parts.length - 1][0]}'.toUpperCase();
+  }
+
+  Widget _badge(
+    BuildContext context, {
+    required String label,
+    required Color backgroundColor,
+    required Color textColor,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+          color: textColor,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
-    return Column(
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isActive = status.toLowerCase() == 'active';
+
+    return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'ID: $userId',
-              style: textTheme.labelLarge?.copyWith(
-                color: scheme.onSurface,
-                fontWeight: FontWeight.w700,
-              ),
+        CircleAvatar(
+          radius: 20,
+          backgroundColor: _avatarColor(docId),
+          child: Text(
+            _initials(fullName),
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
             ),
-            const SizedBox(height: 4),
-            Text(
-              fullName,
-              style: textTheme.titleMedium?.copyWith(
-                color: scheme.onSurface,
-                fontWeight: FontWeight.w700,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
-        ),
-        const SizedBox(height: 6),
-        Text(
-          email,
-          style: textTheme.bodyMedium?.copyWith(
-            color: scheme.onSurfaceVariant,
           ),
         ),
-        const SizedBox(height: 6),
-        Text(
-          address,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: textTheme.bodyMedium?.copyWith(
-            color: scheme.onSurfaceVariant,
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                fullName,
+                style: textTheme.titleSmall?.copyWith(
+                  color: scheme.onSurface,
+                  fontWeight: FontWeight.w700,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: [
+                  _badge(
+                    context,
+                    label: isActive ? 'Active' : 'Inactive',
+                    backgroundColor: isActive
+                        ? (isDark
+                            ? const Color(0xFF143D2E)
+                            : const Color(0xFFDCFCE7))
+                        : (isDark
+                            ? const Color(0xFF3A2412)
+                            : const Color(0xFFFEF3C7)),
+                    textColor: isActive
+                        ? const Color(0xFF16A34A)
+                        : const Color(0xFFD97706),
+                  ),
+                  if (isDuplicate)
+                    _badge(
+                      context,
+                      label: 'Duplicate',
+                      backgroundColor: isDark
+                          ? const Color(0xFF3A1414)
+                          : const Color(0xFFFEF2F2),
+                      textColor: const Color(0xFFDC2626),
+                    ),
+                ],
+              ),
+            ],
           ),
         ),
       ],
@@ -882,9 +1126,10 @@ class _GrowerActionSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        OutlinedButton(
+        OutlinedButton.icon(
           onPressed: onView,
-          child: const Text('View User'),
+          icon: const Icon(Icons.visibility_outlined, size: 16),
+          label: const Text('View User'),
         ),
         const SizedBox(height: 8),
         ElevatedButton.icon(
@@ -897,1341 +1142,6 @@ class _GrowerActionSection extends StatelessWidget {
   }
 }
 
-class _UserDetailsPage extends StatefulWidget {
-  final String userDocId;
-  final String userId;
-  final String email;
-
-  const _UserDetailsPage({
-    required this.userDocId,
-    required this.userId,
-    required this.email,
-  });
-
-  @override
-  State<_UserDetailsPage> createState() => _UserDetailsPageState();
-}
-
-class _UserDetailsPageState extends State<_UserDetailsPage> {
-  String _selectedAverageRange = 'Daily';
-  String? _selectedSystemId;
-
-  static const List<String> _averageRanges = ['Daily', 'Weekly', 'Monthly'];
-
-  Map<String, dynamic> _asStringMap(dynamic value) {
-    if (value is Map<String, dynamic>) return value;
-    if (value is Map) {
-      return value.map((key, val) => MapEntry(key.toString(), val));
-    }
-    return <String, dynamic>{};
-  }
-
-  String _selectedRangeKey() {
-    switch (_selectedAverageRange) {
-      case 'Weekly':
-        return 'weekly';
-      case 'Monthly':
-        return 'monthly';
-      case 'Daily':
-      default:
-        return 'daily';
-    }
-  }
-
-  String _formatAverageReading(dynamic value, {String unit = ''}) {
-    if (value == null) return '-';
-    final text = value.toString().trim();
-    if (text.isEmpty) return '-';
-    return unit.isEmpty ? text : '$text $unit';
-  }
-
-  String _formatValue(dynamic value) {
-    if (value == null) return '-';
-    if (value is Timestamp) return value.toDate().toString();
-    if (value is Map || value is List) return value.toString();
-    final text = value.toString().trim();
-    return text.isEmpty ? '-' : text;
-  }
-
-  String _formatFieldName(String key) {
-    if (key.trim().isEmpty) return '-';
-    final words = key
-        .split('_')
-        .where((part) => part.trim().isNotEmpty)
-        .map(
-          (part) =>
-              '${part[0].toUpperCase()}${part.length > 1 ? part.substring(1).toLowerCase() : ''}',
-        )
-        .toList();
-    return words.join(' ');
-  }
-
-  Widget _buildSectionCard({
-    required BuildContext context,
-    required String title,
-    required Color accentColor,
-    required Widget child,
-    Widget? trailing,
-  }) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final titleColor = colorScheme.onPrimary;
-    final surfaceColor = colorScheme.surface;
-    final bodyColor = Color.alphaBlend(
-      accentColor.withOpacity(0.12),
-      surfaceColor,
-    );
-    final borderColor = colorScheme.primary;
-
-    return Card(
-      elevation: 1.5,
-      color: surfaceColor,
-      margin: EdgeInsets.zero,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: borderColor, width: 1),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Container(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    accentColor,
-                    Color.alphaBlend(accentColor.withOpacity(0.2), accentColor),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      title,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        color: titleColor,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                  if (trailing != null) trailing,
-                ],
-              ),
-            ),
-            Container(
-              color: bodyColor,
-              padding: const EdgeInsets.all(16),
-              child: child,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTableShell({
-    required Widget child,
-    Color? backgroundColor,
-  }) {
-    final scheme = Theme.of(context).colorScheme;
-    final effectiveBackground = backgroundColor ?? scheme.surface;
-    return Container(
-      decoration: BoxDecoration(
-        color: effectiveBackground,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: scheme.outlineVariant),
-      ),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: child,
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Scaffold(
-      backgroundColor: colorScheme.surface,
-      appBar: AppBar(
-        title: const Text('User Details'),
-        backgroundColor: colorScheme.primary,
-        foregroundColor: colorScheme.onPrimary,
-      ),
-      body: Container(
-        decoration: BoxDecoration(color: colorScheme.surface),
-        child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-          stream: FirebaseFirestore.instance
-              .collection('user')
-              .doc(widget.userDocId)
-              .snapshots(),
-          builder: (context, userSnapshot) {
-            if (userSnapshot.hasError) {
-              return Center(
-                child: Text(
-                  'Error loading user details: ${userSnapshot.error}',
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
-                ),
-              );
-            }
-            if (userSnapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
-
-            final userData = userSnapshot.data?.data();
-            if (userData == null) {
-              return const Center(child: Text('User document not found.'));
-            }
-
-            return StreamBuilder<List<UserSystem>>(
-              stream: UserAccountService.watchUserSystems(widget.userDocId),
-              builder: (context, systemsSnapshot) {
-                if (systemsSnapshot.hasError) {
-                  return Center(
-                    child: Text(
-                      'Error loading systems: ${systemsSnapshot.error}',
-                      style: TextStyle(color: Theme.of(context).colorScheme.error),
-                    ),
-                  );
-                }
-                if (systemsSnapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-
-                final systems = systemsSnapshot.data ?? [];
-                if (_selectedSystemId == null && systems.isNotEmpty) {
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (!mounted) return;
-                    setState(() => _selectedSystemId = systems.first.id);
-                  });
-                }
-                final selectedSystem = systems.isEmpty
-                    ? null
-                    : systems.firstWhere(
-                        (system) => system.id == _selectedSystemId,
-                        orElse: () => systems.first,
-                      );
-                final systemLabel = (UserSystem system) =>
-                    system.systemName.trim().isNotEmpty
-                        ? system.systemName
-                        : 'System ${system.id}';
-
-                final averagesMap =
-                    _asStringMap(selectedSystem?.sensorAverages);
-                final selectedKey = _selectedRangeKey();
-                final currentAverages = _asStringMap(averagesMap[selectedKey]);
-                final harvestTotals =
-                    _asStringMap(selectedSystem?.harvestTotals);
-            final onSurface = colorScheme.onSurface;
-            final onSurfaceVariant = colorScheme.onSurfaceVariant;
-            final sensorAverageRows = <DataRow>[
-              DataRow(
-                cells: [
-                  DataCell(
-                    Text(
-                      'Water Temperature (\u00B0C)',
-                      style: TextStyle(color: onSurface),
-                    ),
-                  ),
-                  DataCell(
-                    Text(
-                      _formatAverageReading(
-                        currentAverages['temp'],
-                        unit: '\u00B0C',
-                      ),
-                      style: TextStyle(color: onSurface),
-                    ),
-                  ),
-                ],
-              ),
-              DataRow(
-                cells: [
-                  DataCell(Text('pH Level', style: TextStyle(color: onSurface))),
-                  DataCell(
-                    Text(
-                      _formatAverageReading(currentAverages['ph']),
-                      style: TextStyle(color: onSurface),
-                    ),
-                  ),
-                ],
-              ),
-              DataRow(
-                cells: [
-                  DataCell(
-                    Text(
-                      'Dissolved Oxygen (mg/L)',
-                      style: TextStyle(color: onSurface),
-                    ),
-                  ),
-                  DataCell(
-                    Text(
-                      _formatAverageReading(currentAverages['do'], unit: 'mg/L'),
-                      style: TextStyle(color: onSurface),
-                    ),
-                  ),
-                ],
-              ),
-              DataRow(
-                cells: [
-                  DataCell(
-                    Text('Ammonia (ppm)', style: TextStyle(color: onSurface)),
-                  ),
-                  DataCell(
-                    Text(
-                      _formatAverageReading(
-                        currentAverages['ammonia'],
-                        unit: 'ppm',
-                      ),
-                      style: TextStyle(color: onSurface),
-                    ),
-                  ),
-                ],
-              ),
-              DataRow(
-                cells: [
-                  DataCell(
-                    Text('Salinity (ppt)', style: TextStyle(color: onSurface)),
-                  ),
-                  DataCell(
-                    Text(
-                      _formatAverageReading(
-                        currentAverages['salinity'],
-                        unit: 'ppt',
-                      ),
-                      style: TextStyle(color: onSurface),
-                    ),
-                  ),
-                ],
-              ),
-              DataRow(
-                cells: [
-                  DataCell(
-                    Text('Turbidity (NTU)', style: TextStyle(color: onSurface)),
-                  ),
-                  DataCell(
-                    Text(
-                      _formatAverageReading(
-                        currentAverages['turbidity'],
-                        unit: 'NTU',
-                      ),
-                      style: TextStyle(color: onSurface),
-                    ),
-                  ),
-                ],
-              ),
-            ];
-
-            const hiddenProfileFields = {
-              'current_plant_id',
-              'current_fish_id',
-              'sensor_averages',
-              'harvers_totals',
-              'harvest_totals',
-              'aquaculture_info',
-              'plant_info',
-              'harvest_info',
-              'updated_at',
-              'updated_by',
-              'user_id',
-            };
-            final keys =
-                userData.keys
-                    .where((key) => !hiddenProfileFields.contains(key))
-                    .toList()
-                  ..sort();
-
-            final extraProfileRows = [
-              DataRow(
-                cells: [
-                  DataCell(
-                    Text(
-                      'Participant Join Date',
-                      style: TextStyle(color: onSurface),
-                    ),
-                  ),
-                  DataCell(
-                    Text(
-                      'January 15, 2026',
-                      style: TextStyle(color: onSurface),
-                    ),
-                  ),
-                ],
-              ),
-            ];
-
-            final profileRows = <DataRow>[];
-            var hasInsertedExtras = false;
-            for (final key in keys) {
-              profileRows.add(
-                DataRow(
-                  cells: [
-                    DataCell(
-                      Text(
-                        _formatFieldName(key),
-                        style: TextStyle(color: onSurface),
-                      ),
-                    ),
-                    DataCell(
-                      Text(
-                        _formatValue(userData[key]),
-                        style: TextStyle(color: onSurface),
-                      ),
-                    ),
-                  ],
-                ),
-              );
-              if (!hasInsertedExtras && key == 'status') {
-                profileRows.addAll(extraProfileRows);
-                hasInsertedExtras = true;
-              }
-            }
-            if (!hasInsertedExtras) {
-              profileRows.addAll(extraProfileRows);
-            }
-
-            final profileCard = _buildSectionCard(
-              context: context,
-              title: 'Profile',
-              accentColor: const Color(0xFF1D4ED8),
-              child: _buildTableShell(
-                child: DataTable(
-                  columns: [
-                    DataColumn(
-                      label: Text(
-                        'Information',
-                        style: TextStyle(color: onSurfaceVariant),
-                      ),
-                    ),
-                    DataColumn(
-                      label: Text(
-                        'Details',
-                        style: TextStyle(color: onSurfaceVariant),
-                      ),
-                    ),
-                  ],
-                  dataTextStyle: TextStyle(color: onSurface),
-                  headingTextStyle: TextStyle(color: onSurfaceVariant),
-                  rows: profileRows,
-                ),
-              ),
-            );
-
-            final sensorAveragesCard = _buildSectionCard(
-              context: context,
-              title: 'Average Sensor Readings',
-              accentColor: const Color(0xFF0F766E),
-              trailing: SizedBox(
-                width: 130,
-                child: DropdownButtonFormField<String>(
-                  value: _selectedAverageRange,
-                  isExpanded: true,
-                  dropdownColor: colorScheme.surface,
-                  style: TextStyle(
-                    color: onSurface,
-                    fontSize: 14,
-                  ),
-                  decoration: InputDecoration(
-                    isDense: true,
-                    filled: true,
-                    fillColor: colorScheme.surface,
-                    hintText: 'Daily',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: BorderSide(color: colorScheme.outlineVariant),
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 6,
-                    ),
-                  ),
-                  items: _averageRanges
-                      .map(
-                        (range) => DropdownMenuItem<String>(
-                          value: range,
-                          child: Text(
-                            range,
-                            style: TextStyle(color: onSurface),
-                          ),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (value) {
-                    if (value == null) return;
-                    setState(() => _selectedAverageRange = value);
-                  },
-                ),
-              ),
-              child: _buildTableShell(
-                child: DataTable(
-                  columns: [
-                    DataColumn(
-                      label: Text(
-                        'Parameter',
-                        style: TextStyle(color: onSurfaceVariant),
-                      ),
-                    ),
-                    DataColumn(
-                      label: Text(
-                        'Average Reading',
-                        style: TextStyle(color: onSurfaceVariant),
-                      ),
-                    ),
-                  ],
-                  dataTextStyle: TextStyle(color: onSurface),
-                  headingTextStyle: TextStyle(color: onSurfaceVariant),
-                  rows: sensorAverageRows,
-                ),
-              ),
-            );
-
-            final aquacultureInfoRows = [
-              DataRow(
-                cells: [
-                  DataCell(
-                    Text('Fish Species', style: TextStyle(color: onSurface)),
-                  ),
-                  DataCell(
-                    Text('Catfish', style: TextStyle(color: onSurface)),
-                  ),
-                ],
-              ),
-              DataRow(
-                cells: [
-                  DataCell(
-                    Text('Stocking Date', style: TextStyle(color: onSurface)),
-                  ),
-                  DataCell(
-                    Text('January 20, 2026', style: TextStyle(color: onSurface)),
-                  ),
-                ],
-              ),
-              DataRow(
-                cells: [
-                  DataCell(
-                    Text(
-                      'Initial Stock Quantity',
-                      style: TextStyle(color: onSurface),
-                    ),
-                  ),
-                  DataCell(Text('50', style: TextStyle(color: onSurface))),
-                ],
-              ),
-              DataRow(
-                cells: [
-                  DataCell(
-                    Text(
-                      'Current Population',
-                      style: TextStyle(color: onSurface),
-                    ),
-                  ),
-                  DataCell(Text('50', style: TextStyle(color: onSurface))),
-                ],
-              ),
-              DataRow(
-                cells: [
-                  DataCell(
-                    Text(
-                      'Average Fish Size',
-                      style: TextStyle(color: onSurface),
-                    ),
-                  ),
-                  DataCell(
-                    Text(
-                      'Small, Medium, Big',
-                      style: TextStyle(color: onSurface),
-                    ),
-                  ),
-                ],
-              ),
-              DataRow(
-                cells: [
-                  DataCell(
-                    Text('Survival Rate', style: TextStyle(color: onSurface)),
-                  ),
-                  DataCell(Text('100%', style: TextStyle(color: onSurface))),
-                ],
-              ),
-              DataRow(
-                cells: [
-                  DataCell(
-                    Text(
-                      'Monitoring Schedule',
-                      style: TextStyle(color: onSurface),
-                    ),
-                  ),
-                  DataCell(
-                    Text(
-                      'Every 1st of the month',
-                      style: TextStyle(color: onSurface),
-                    ),
-                  ),
-                ],
-              ),
-            ];
-
-            final aquacultureInfoCard = _buildSectionCard(
-              context: context,
-              title: 'Aquaculture Information',
-              accentColor: const Color(0xFF0369A1),
-              child: _buildTableShell(
-                child: DataTable(
-                  columns: [
-                    DataColumn(
-                      label: Text(
-                        'Information',
-                        style: TextStyle(color: onSurfaceVariant),
-                      ),
-                    ),
-                    DataColumn(
-                      label: Text(
-                        'Details',
-                        style: TextStyle(color: onSurfaceVariant),
-                      ),
-                    ),
-                  ],
-                  dataTextStyle: TextStyle(color: onSurface),
-                  headingTextStyle: TextStyle(color: onSurfaceVariant),
-                  rows: aquacultureInfoRows,
-                ),
-              ),
-            );
-
-            final plantInfoRows = [
-              DataRow(
-                cells: [
-                  DataCell(Text('Crop Type', style: TextStyle(color: onSurface))),
-                  DataCell(Text('Basil', style: TextStyle(color: onSurface))),
-                ],
-              ),
-              DataRow(
-                cells: [
-                  DataCell(
-                    Text('Overall Batches', style: TextStyle(color: onSurface)),
-                  ),
-                  DataCell(
-                    Text(
-                      _formatValue(harvestTotals['total_plant_batches']),
-                      style: TextStyle(color: onSurface),
-                    ),
-                  ),
-                ],
-              ),
-              DataRow(
-                cells: [
-                  DataCell(
-                    Text('Crops Per Batch', style: TextStyle(color: onSurface)),
-                  ),
-                  DataCell(Text('30', style: TextStyle(color: onSurface))),
-                ],
-              ),
-              DataRow(
-                cells: [
-                  DataCell(
-                    Text('Current Batch', style: TextStyle(color: onSurface)),
-                  ),
-                  DataCell(Text('Batch 2', style: TextStyle(color: onSurface))),
-                ],
-              ),
-              DataRow(
-                cells: [
-                  DataCell(
-                    Text('Planting Date', style: TextStyle(color: onSurface)),
-                  ),
-                  DataCell(
-                    Text('February 3, 2026', style: TextStyle(color: onSurface)),
-                  ),
-                ],
-              ),
-              DataRow(
-                cells: [
-                  DataCell(
-                    Text(
-                      'Expected Harvest Date',
-                      style: TextStyle(color: onSurface),
-                    ),
-                  ),
-                  DataCell(
-                    Text('March 28, 2026', style: TextStyle(color: onSurface)),
-                  ),
-                ],
-              ),
-              DataRow(
-                cells: [
-                  DataCell(
-                    Text('Growth Stage', style: TextStyle(color: onSurface)),
-                  ),
-                  DataCell(
-                    Text('Vegetative', style: TextStyle(color: onSurface)),
-                  ),
-                ],
-              ),
-              DataRow(
-                cells: [
-                  DataCell(
-                    Text('Crop Status', style: TextStyle(color: onSurface)),
-                  ),
-                  DataCell(
-                    Text('Healthy', style: TextStyle(color: onSurface)),
-                  ),
-                ],
-              ),
-              DataRow(
-                cells: [
-                  DataCell(
-                    Text(
-                      'Monitoring Schedule',
-                      style: TextStyle(color: onSurface),
-                    ),
-                  ),
-                  DataCell(
-                    Text('Every Monday', style: TextStyle(color: onSurface)),
-                  ),
-                ],
-              ),
-            ];
-
-            final plantInfoCard = _buildSectionCard(
-              context: context,
-              title: 'Plant Information',
-              accentColor: const Color(0xFF4D7C0F),
-              child: _buildTableShell(
-                child: DataTable(
-                  columns: [
-                    DataColumn(
-                      label: Text(
-                        'Information',
-                        style: TextStyle(color: onSurfaceVariant),
-                      ),
-                    ),
-                    DataColumn(
-                      label: Text(
-                        'Details',
-                        style: TextStyle(color: onSurfaceVariant),
-                      ),
-                    ),
-                  ],
-                  dataTextStyle: TextStyle(color: onSurface),
-                  headingTextStyle: TextStyle(color: onSurfaceVariant),
-                  rows: plantInfoRows,
-                ),
-              ),
-            );
-
-            final aquacultureHarvestRows = [
-              DataRow(
-                cells: [
-                  DataCell(
-                    Text(
-                      'Total Fish Harvested',
-                      style: TextStyle(color: onSurface),
-                    ),
-                  ),
-                  DataCell(
-                    Text(
-                      _formatValue(harvestTotals['total_fish_harvested']),
-                      style: TextStyle(color: onSurface),
-                    ),
-                  ),
-                ],
-              ),
-              DataRow(
-                cells: [
-                  DataCell(
-                    Text(
-                      'Average Fish Size',
-                      style: TextStyle(color: onSurface),
-                    ),
-                  ),
-                  DataCell(
-                    Text(
-                      _formatValue(harvestTotals['average_fish_size']),
-                      style: TextStyle(color: onSurface),
-                    ),
-                  ),
-                ],
-              ),
-              DataRow(
-                cells: [
-                  DataCell(
-                    Text('Survival Rate', style: TextStyle(color: onSurface)),
-                  ),
-                  DataCell(
-                    Text(
-                      _formatValue(harvestTotals['survival_rate']),
-                      style: TextStyle(color: onSurface),
-                    ),
-                  ),
-                ],
-              ),
-            ];
-
-            final aquacultureHarvestCard = _buildSectionCard(
-              context: context,
-              title: 'Aquaculture Harvest Information',
-              accentColor: const Color(0xFF0C4A6E),
-              child: _buildTableShell(
-                child: DataTable(
-                  columns: [
-                    DataColumn(
-                      label: Text(
-                        'Information',
-                        style: TextStyle(color: onSurfaceVariant),
-                      ),
-                    ),
-                    DataColumn(
-                      label: Text(
-                        'Details',
-                        style: TextStyle(color: onSurfaceVariant),
-                      ),
-                    ),
-                  ],
-                  dataTextStyle: TextStyle(color: onSurface),
-                  headingTextStyle: TextStyle(color: onSurfaceVariant),
-                  rows: aquacultureHarvestRows,
-                ),
-              ),
-            );
-
-            final plantHarvestRows = [
-              DataRow(
-                cells: [
-                  DataCell(
-                    Text(
-                      'Total Number of Plant Batches',
-                      style: TextStyle(color: onSurface),
-                    ),
-                  ),
-                  DataCell(Text('5', style: TextStyle(color: onSurface))),
-                ],
-              ),
-              DataRow(
-                cells: [
-                  DataCell(
-                    Text(
-                      'Total Plants Harvested',
-                      style: TextStyle(color: onSurface),
-                    ),
-                  ),
-                  DataCell(
-                    Text(
-                      _formatValue(harvestTotals['total_plants_harvested']),
-                      style: TextStyle(color: onSurface),
-                    ),
-                  ),
-                ],
-              ),
-              DataRow(
-                cells: [
-                  DataCell(
-                    Text(
-                      'Average Yield Per Batch',
-                      style: TextStyle(color: onSurface),
-                    ),
-                  ),
-                  DataCell(
-                    Text(
-                      _formatValue(harvestTotals['average_yield_per_batch']),
-                      style: TextStyle(color: onSurface),
-                    ),
-                  ),
-                ],
-              ),
-            ];
-
-            final plantHarvestCard = _buildSectionCard(
-              context: context,
-              title: 'Plant Harvest Information',
-              accentColor: const Color(0xFF3F6212),
-              child: _buildTableShell(
-                child: DataTable(
-                  columns: [
-                    DataColumn(
-                      label: Text(
-                        'Information',
-                        style: TextStyle(color: onSurfaceVariant),
-                      ),
-                    ),
-                    DataColumn(
-                      label: Text(
-                        'Details',
-                        style: TextStyle(color: onSurfaceVariant),
-                      ),
-                    ),
-                  ],
-                  dataTextStyle: TextStyle(color: onSurface),
-                  headingTextStyle: TextStyle(color: onSurfaceVariant),
-                  rows: plantHarvestRows,
-                ),
-              ),
-            );
-
-            final historyCard = _buildSectionCard(
-              context: context,
-              title: 'User History',
-              accentColor: const Color(0xFFB45309),
-              child: _UserHistoryTable(userId: widget.userId),
-            );
-            final growthProgressLogsCard = _buildSectionCard(
-              context: context,
-              title: 'Growth Progress Logs',
-              accentColor: const Color(0xFF7C3AED),
-              child: _UserWeeklyLogsTable(
-                userDocId: widget.userDocId,
-                systemId: selectedSystem?.id ?? '',
-              ),
-            );
-
-            return LayoutBuilder(
-              builder: (context, constraints) {
-                final showSideBySide = constraints.maxWidth >= 1100;
-
-                return SingleChildScrollView(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      if (systems.length > 1)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 16),
-                          child: Align(
-                            alignment: Alignment.centerLeft,
-                            child: SizedBox(
-                              width: 260,
-                              child: DropdownButtonFormField<String>(
-                                value: selectedSystem?.id,
-                                decoration: const InputDecoration(
-                                  labelText: 'System',
-                                  border: OutlineInputBorder(),
-                                ),
-                                items: systems
-                                    .map(
-                                      (system) => DropdownMenuItem<String>(
-                                        value: system.id,
-                                        child: Text(systemLabel(system)),
-                                      ),
-                                    )
-                                    .toList(),
-                                onChanged: (value) {
-                                  if (value == null) return;
-                                  setState(() => _selectedSystemId = value);
-                                },
-                              ),
-                            ),
-                          ),
-                        ),
-                      if (showSideBySide)
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(child: profileCard),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  sensorAveragesCard,
-                                  const SizedBox(height: 16),
-                                  historyCard,
-                                ],
-                              ),
-                            ),
-                          ],
-                        )
-                      else ...[
-                        profileCard,
-                        const SizedBox(height: 16),
-                        sensorAveragesCard,
-                        const SizedBox(height: 16),
-                        historyCard,
-                      ],
-                      const SizedBox(height: 16),
-                      if (showSideBySide)
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(child: aquacultureInfoCard),
-                            const SizedBox(width: 16),
-                            Expanded(child: plantInfoCard),
-                          ],
-                        )
-                      else ...[
-                        aquacultureInfoCard,
-                        const SizedBox(height: 16),
-                        plantInfoCard,
-                      ],
-                      const SizedBox(height: 16),
-                      if (showSideBySide)
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(child: aquacultureHarvestCard),
-                            const SizedBox(width: 16),
-                            Expanded(child: plantHarvestCard),
-                          ],
-                        )
-                      else ...[
-                        aquacultureHarvestCard,
-                        const SizedBox(height: 16),
-                        plantHarvestCard,
-                      ],
-                      const SizedBox(height: 16),
-                      growthProgressLogsCard,
-                      const SizedBox(height: 16),
-                      _buildSectionCard(
-                        context: context,
-                        title: 'Support Tickets',
-                        accentColor: const Color(0xFF0E7490),
-                        child: _UserTicketsTable(
-                          userId: widget.userId,
-                          email: widget.email,
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            );
-          },
-        );
-      },
-    ),
-  ),
-);
-  }
-}
-
-class _UserTicketsTable extends StatelessWidget {
-  final String userId;
-  final String email;
-
-  const _UserTicketsTable({required this.userId, required this.email});
-
-  String _safe(dynamic value, {String fallback = '-'}) {
-    final text = value?.toString().trim() ?? '';
-    return text.isEmpty ? fallback : text;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance
-          .collection('support_tickets')
-          .where('user_id', isEqualTo: userId)
-          .snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.hasError) {
-          return Text(
-            'Error loading support tickets: ${snapshot.error}',
-            style: TextStyle(color: Theme.of(context).colorScheme.error),
-          );
-        }
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Padding(
-            padding: EdgeInsets.symmetric(vertical: 12),
-            child: CircularProgressIndicator(),
-          );
-        }
-
-        final docs = snapshot.data?.docs ?? [];
-        if (docs.isEmpty) {
-          return Text(
-            'No support tickets found for user_id "$userId"${email.isNotEmpty ? ' ($email)' : ''}.',
-          );
-        }
-
-        return SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: DataTable(
-            columns: [
-              DataColumn(
-                label: Text('Ticket ID', style: TextStyle(color: scheme.onSurfaceVariant)),
-              ),
-              DataColumn(
-                label: Text('Subject', style: TextStyle(color: scheme.onSurfaceVariant)),
-              ),
-              DataColumn(
-                label: Text('Status', style: TextStyle(color: scheme.onSurfaceVariant)),
-              ),
-              DataColumn(
-                label: Text('Created At', style: TextStyle(color: scheme.onSurfaceVariant)),
-              ),
-            ],
-            dataTextStyle: TextStyle(color: scheme.onSurface),
-            headingTextStyle: TextStyle(color: scheme.onSurfaceVariant),
-            rows: docs.map((doc) {
-              final data = doc.data();
-              final createdAt = data['created_at'];
-              return DataRow(
-                cells: [
-                  DataCell(Text(doc.id, style: TextStyle(color: scheme.onSurface))),
-                  DataCell(Text(_safe(data['subject']), style: TextStyle(color: scheme.onSurface))),
-                  DataCell(Text(_safe(data['status']), style: TextStyle(color: scheme.onSurface))),
-                  DataCell(
-                    Text(
-                      createdAt is Timestamp
-                          ? createdAt.toDate().toString()
-                          : _safe(createdAt),
-                      style: TextStyle(color: scheme.onSurface),
-                    ),
-                  ),
-                ],
-              );
-            }).toList(),
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _UserHistoryTable extends StatelessWidget {
-  final String userId;
-
-  const _UserHistoryTable({required this.userId});
-
-  String _safeText(dynamic value, {String fallback = '-'}) {
-    final text = value?.toString().trim() ?? '';
-    return text.isEmpty ? fallback : text;
-  }
-
-  DateTime? _asDateTime(dynamic value) {
-    if (value is Timestamp) return value.toDate();
-    if (value is DateTime) return value;
-    if (value is String) return DateTime.tryParse(value);
-    return null;
-  }
-
-  String _formatDateTime(dynamic value) {
-    final dt = _asDateTime(value);
-    if (dt == null) return _safeText(value);
-    final local = dt.toLocal();
-    final mm = local.month.toString().padLeft(2, '0');
-    final dd = local.day.toString().padLeft(2, '0');
-    final hh = local.hour.toString().padLeft(2, '0');
-    final min = local.minute.toString().padLeft(2, '0');
-    return '${local.year}-$mm-$dd $hh:$min';
-  }
-
-  String _notificationEvent(Map<String, dynamic> data) {
-    return _safeText(
-      data['message'] ??
-          data['event'] ??
-          data['title'] ??
-          data['body'] ??
-          data['description'],
-      fallback: 'Notification',
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final numericUserId = int.tryParse(userId);
-    final notificationsStream = numericUserId != null
-        ? FirebaseFirestore.instance
-              .collection('notifications')
-              .where('user_id', isEqualTo: numericUserId)
-              .snapshots()
-        : FirebaseFirestore.instance
-              .collection('notifications')
-              .where('user_id', isEqualTo: userId)
-              .snapshots();
-
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: notificationsStream,
-      builder: (context, snapshot) {
-        if (snapshot.hasError) {
-          return Text(
-            'Error loading history: ${snapshot.error}',
-            style: TextStyle(color: Theme.of(context).colorScheme.error),
-          );
-        }
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Padding(
-            padding: EdgeInsets.symmetric(vertical: 12),
-            child: CircularProgressIndicator(),
-          );
-        }
-
-        final docs = (snapshot.data?.docs ?? []).toList()
-          ..sort((a, b) {
-            final aData = a.data();
-            final bData = b.data();
-            final aDate = _asDateTime(
-              aData['created_at'] ?? aData['timestamp'] ?? aData['date'],
-            );
-            final bDate = _asDateTime(
-              bData['created_at'] ?? bData['timestamp'] ?? bData['date'],
-            );
-            if (aDate == null && bDate == null) return 0;
-            if (aDate == null) return 1;
-            if (bDate == null) return -1;
-            return bDate.compareTo(aDate);
-          });
-
-        if (docs.isEmpty) {
-          return Text('No notification history found for user_id "$userId".');
-        }
-
-        return SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: DataTable(
-            columns: [
-              DataColumn(
-                label: Text('Date & Time', style: TextStyle(color: scheme.onSurfaceVariant)),
-              ),
-              DataColumn(
-                label: Text('Event', style: TextStyle(color: scheme.onSurfaceVariant)),
-              ),
-              DataColumn(
-                label: Text('User ID', style: TextStyle(color: scheme.onSurfaceVariant)),
-              ),
-            ],
-            dataTextStyle: TextStyle(color: scheme.onSurface),
-            headingTextStyle: TextStyle(color: scheme.onSurfaceVariant),
-            rows: docs.map((doc) {
-              final data = doc.data();
-              final when =
-                  data['created_at'] ?? data['timestamp'] ?? data['date'];
-              return DataRow(
-                cells: [
-                  DataCell(
-                    Text(_formatDateTime(when), style: TextStyle(color: scheme.onSurface)),
-                  ),
-                  DataCell(
-                    Text(_notificationEvent(data), style: TextStyle(color: scheme.onSurface)),
-                  ),
-                  DataCell(
-                    Text(_safeText(data['user_id'], fallback: userId), style: TextStyle(color: scheme.onSurface)),
-                  ),
-                ],
-              );
-            }).toList(),
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _UserWeeklyLogsTable extends StatelessWidget {
-  final String userDocId;
-  final String systemId;
-
-  const _UserWeeklyLogsTable({
-    required this.userDocId,
-    required this.systemId,
-  });
-
-  String _safe(dynamic value, {String fallback = '-'}) {
-    final text = value?.toString().trim() ?? '';
-    return text.isEmpty ? fallback : text;
-  }
-
-  DateTime? _asDateTime(dynamic value) {
-    if (value is Timestamp) return value.toDate();
-    if (value is DateTime) return value;
-    if (value is String) return DateTime.tryParse(value);
-    return null;
-  }
-
-  String _formatDate(dynamic value) {
-    final dt = _asDateTime(value);
-    if (dt == null) return _safe(value);
-    final local = dt.toLocal();
-    final mm = local.month.toString().padLeft(2, '0');
-    final dd = local.day.toString().padLeft(2, '0');
-    return '${local.year}-$mm-$dd';
-  }
-
-  String _formatNumber(dynamic value) {
-    if (value == null) return '-';
-    if (value is num) return value.toStringAsFixed(value % 1 == 0 ? 0 : 1);
-    final text = value.toString().trim();
-    return text.isEmpty ? '-' : text;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    if (systemId.trim().isEmpty) {
-      return const Text('No system selected for weekly logs.');
-    }
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance
-          .collection('user')
-          .doc(userDocId)
-          .collection('systems')
-          .doc(systemId)
-          .collection('weekly_logs')
-          .orderBy('timestamp', descending: true)
-          .snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.hasError) {
-          return Text(
-            'Error loading weekly logs: ${snapshot.error}',
-            style: TextStyle(color: Theme.of(context).colorScheme.error),
-          );
-        }
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Padding(
-            padding: EdgeInsets.symmetric(vertical: 12),
-            child: CircularProgressIndicator(),
-          );
-        }
-
-        final docs = snapshot.data?.docs ?? [];
-        if (docs.isEmpty) {
-          return const Text('No weekly growth progress logs found.');
-        }
-
-        return SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: DataTable(
-            columns: [
-              DataColumn(label: Text('Date', style: TextStyle(color: scheme.onSurfaceVariant))),
-              DataColumn(label: Text('Fish Size (cm)', style: TextStyle(color: scheme.onSurfaceVariant))),
-              DataColumn(label: Text('Plant Height (cm)', style: TextStyle(color: scheme.onSurfaceVariant))),
-              DataColumn(label: Text('Health Status', style: TextStyle(color: scheme.onSurfaceVariant))),
-              DataColumn(label: Text('Notes', style: TextStyle(color: scheme.onSurfaceVariant))),
-            ],
-            dataTextStyle: TextStyle(color: scheme.onSurface),
-            headingTextStyle: TextStyle(color: scheme.onSurfaceVariant),
-            rows: docs.map((doc) {
-              final data = doc.data();
-              return DataRow(
-                cells: [
-                  DataCell(Text(_formatDate(data['timestamp']), style: TextStyle(color: scheme.onSurface))),
-                  DataCell(Text(_formatNumber(data['fish_size_cm']), style: TextStyle(color: scheme.onSurface))),
-                  DataCell(Text(_formatNumber(data['plant_height_cm']), style: TextStyle(color: scheme.onSurface))),
-                  DataCell(Text(_safe(data['health_status']), style: TextStyle(color: scheme.onSurface))),
-                  DataCell(
-                    ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 320),
-                      child: Text(
-                        _safe(data['notes']),
-                        style: TextStyle(color: scheme.onSurface),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ),
-                ],
-              );
-            }).toList(),
-          ),
-        );
-      },
-    );
-  }
-}
 
 class _UserDialog extends StatefulWidget {
   final DocumentSnapshot<Map<String, dynamic>>? document;
@@ -2352,7 +1262,7 @@ class _UserDialogState extends State<_UserDialog> {
           );
         }
         setState(() => _isSaving = true);
-        final result = await UserAccountService.createManagedUser(
+        await UserAccountService.createManagedUser(
           userId: nextUserId,
           firstName: _firstNameCtrl.text,
           lastName: _lastNameCtrl.text,
@@ -2461,7 +1371,7 @@ class _UserDialogState extends State<_UserDialog> {
               if (_isEditing) ...[
                 const SizedBox(height: 16),
                 DropdownButtonFormField<String>(
-                  value: _statusValue,
+                  initialValue: _statusValue,
                   decoration: const InputDecoration(
                     labelText: 'Status',
                     border: OutlineInputBorder(),

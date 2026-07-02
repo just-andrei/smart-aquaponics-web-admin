@@ -1525,6 +1525,92 @@ class _PlantsTab extends StatelessWidget {
   }
 }
 
+Future<void> _confirmDeleteAquaculture(
+  BuildContext context,
+  DocumentSnapshot doc,
+) async {
+  final data = doc.data() as Map<String, dynamic>? ?? {};
+  final name = (data['name'] ?? 'this entry').toString();
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Delete Aquaculture'),
+      content: Text('Delete "$name"? This cannot be undone.'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(
+            backgroundColor: Theme.of(context).colorScheme.error,
+            foregroundColor: Theme.of(context).colorScheme.onError,
+          ),
+          onPressed: () => Navigator.pop(ctx, true),
+          child: const Text('Delete'),
+        ),
+      ],
+    ),
+  );
+  if (confirmed != true) return;
+  if (!context.mounted) return;
+  try {
+    await doc.reference.delete();
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('"$name" deleted.')),
+    );
+  } on Object catch (e) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Delete failed: ${_firebaseErrorMessage(e)}')),
+    );
+  }
+}
+
+Future<void> _confirmDeletePlant(
+  BuildContext context,
+  DocumentSnapshot doc,
+) async {
+  final data = doc.data() as Map<String, dynamic>? ?? {};
+  final name = (data['name'] ?? 'this entry').toString();
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Delete Plant'),
+      content: Text('Delete "$name"? This cannot be undone.'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(
+            backgroundColor: Theme.of(context).colorScheme.error,
+            foregroundColor: Theme.of(context).colorScheme.onError,
+          ),
+          onPressed: () => Navigator.pop(ctx, true),
+          child: const Text('Delete'),
+        ),
+      ],
+    ),
+  );
+  if (confirmed != true) return;
+  if (!context.mounted) return;
+  try {
+    await doc.reference.delete();
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('"$name" deleted.')),
+    );
+  } on Object catch (e) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Delete failed: ${_firebaseErrorMessage(e)}')),
+    );
+  }
+}
+
 class _HorizontalAquacultureCard extends StatelessWidget {
   const _HorizontalAquacultureCard({
     required this.canManage,
@@ -1600,6 +1686,9 @@ class _HorizontalAquacultureCard extends StatelessWidget {
                       onEdit: canManage
                           ? () => _showEditAquacultureDialog(context, doc)
                           : null,
+                      onDelete: canManage
+                          ? () => _confirmDeleteAquaculture(context, doc)
+                          : null,
                     ),
                   ],
                 )
@@ -1630,7 +1719,7 @@ class _HorizontalAquacultureCard extends StatelessWidget {
                     ),
                     const SizedBox(width: 16),
                     SizedBox(
-                      width: 170,
+                      width: 220,
                       child: _ActionSection(
                         viewLabel: 'View Aquaculture',
                         onView: () => _showViewAquacultureDialog(context, doc),
@@ -1701,6 +1790,9 @@ class _HorizontalPlantCard extends StatelessWidget {
                       onEdit: canManage
                           ? () => _showEditPlantDialog(context, doc)
                           : null,
+                      onDelete: canManage
+                          ? () => _confirmDeletePlant(context, doc)
+                          : null,
                     ),
                   ],
                 )
@@ -1718,7 +1810,7 @@ class _HorizontalPlantCard extends StatelessWidget {
                     ),
                     const SizedBox(width: 16),
                     SizedBox(
-                      width: 170,
+                      width: 220,
                       child: _ActionSection(
                         viewLabel: 'View Plant',
                         onView: () => _showViewPlantDialog(context, doc),
@@ -1753,6 +1845,7 @@ class _DetailsSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1760,49 +1853,85 @@ class _DetailsSection extends StatelessWidget {
           name,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+          style: textTheme.headlineSmall?.copyWith(
                 fontWeight: FontWeight.w700,
                 color: scheme.onSurface,
               ),
         ),
-        const SizedBox(height: 2),
-        Text(
-          type,
-          style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13),
-        ),
         const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: scheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Text(
+            type,
+            style: textTheme.labelMedium?.copyWith(
+              color: scheme.onSurfaceVariant,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
         Text(
           description,
-          maxLines: 3,
+          maxLines: 2,
           overflow: TextOverflow.ellipsis,
-          style: TextStyle(color: scheme.onSurfaceVariant),
+          style: textTheme.bodyMedium?.copyWith(
+            color: scheme.onSurfaceVariant,
+            height: 1.45,
+          ),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 14),
         Text(
           compatibilityLabel,
-          style: TextStyle(
+          style: textTheme.titleSmall?.copyWith(
             fontWeight: FontWeight.w700,
             color: scheme.onSurface,
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 10),
         Wrap(
           spacing: 8,
           runSpacing: 8,
           children: compatibilityItems.isEmpty
               ? [
-                  Chip(
-                    label: const Text('None'),
-                    backgroundColor: scheme.surfaceVariant,
-                    labelStyle: TextStyle(color: scheme.onSurface),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: scheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      'None',
+                      style: textTheme.bodyMedium?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
                   ),
                 ]
               : compatibilityItems
                   .map(
-                    (item) => Chip(
-                      label: Text(item),
-                      backgroundColor: scheme.surfaceVariant,
-                      labelStyle: TextStyle(color: scheme.onSurface),
+                    (item) => Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: scheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: scheme.outlineVariant),
+                      ),
+                      child: Text(
+                        item,
+                        style: textTheme.bodyMedium?.copyWith(
+                          color: scheme.onSurface,
+                        ),
+                      ),
                     ),
                   )
                   .toList(),
@@ -1831,45 +1960,118 @@ class _ParameterSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 10,
-      runSpacing: 10,
+    final scheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _ParameterItem(label: 'Temp', value: tempRange),
-        _ParameterItem(label: 'pH', value: phRange),
-        _ParameterItem(label: 'DO', value: doRange),
-        _ParameterItem(label: 'Salinity', value: salinityRange),
-        _ParameterItem(label: 'Turbidity', value: turbidityRange),
-        _ParameterItem(label: 'Ammonia', value: ammoniaRange),
+        Text(
+          'Water Parameters',
+          style: textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w700,
+            color: scheme.onSurface,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _ParameterItem(
+              icon: Icons.thermostat_rounded,
+              iconColor: const Color(0xFFDC2626),
+              label: 'Temp (°C)',
+              value: tempRange,
+            ),
+            _ParameterItem(
+              icon: Icons.science_outlined,
+              iconColor: const Color(0xFF7C3AED),
+              label: 'pH',
+              value: phRange,
+            ),
+            _ParameterItem(
+              icon: Icons.bubble_chart_outlined,
+              iconColor: const Color(0xFF0EA5A0),
+              label: 'DO (mg/L)',
+              value: doRange,
+            ),
+            _ParameterItem(
+              icon: Icons.water_drop_outlined,
+              iconColor: const Color(0xFF1F64D8),
+              label: 'Salinity (ppt)',
+              value: salinityRange,
+            ),
+            _ParameterItem(
+              icon: Icons.grain_rounded,
+              iconColor: const Color(0xFFD97706),
+              label: 'Turbidity (NTU)',
+              value: turbidityRange,
+            ),
+            _ParameterItem(
+              icon: Icons.warning_amber_rounded,
+              iconColor: const Color(0xFFDC2626),
+              label: 'Ammonia (ppm)',
+              value: ammoniaRange,
+            ),
+          ],
+        ),
       ],
     );
   }
 }
 
 class _ParameterItem extends StatelessWidget {
-  const _ParameterItem({required this.label, required this.value});
+  const _ParameterItem({
+    required this.icon,
+    required this.iconColor,
+    required this.label,
+    required this.value,
+  });
 
+  final IconData icon;
+  final Color iconColor;
   final String label;
   final String value;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
     return Container(
-      constraints: const BoxConstraints(minWidth: 140),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      constraints: const BoxConstraints(minWidth: 148),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: scheme.surfaceVariant,
-        borderRadius: BorderRadius.circular(10),
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: scheme.outlineVariant),
       ),
-      child: Text(
-        '$label: $value',
-        style: TextStyle(
-          color: scheme.onSurface,
-          fontWeight: FontWeight.w600,
-          fontSize: 12,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 15, color: iconColor),
+          const SizedBox(width: 7),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: textTheme.labelSmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                  fontSize: 11,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                style: textTheme.labelMedium?.copyWith(
+                  color: scheme.onSurface,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -1880,20 +2082,33 @@ class _ActionSection extends StatelessWidget {
     required this.viewLabel,
     required this.onView,
     required this.onEdit,
+    this.onDelete,
   });
 
   final String viewLabel;
   final VoidCallback onView;
   final VoidCallback? onEdit;
+  final VoidCallback? onDelete;
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        OutlinedButton(
+        OutlinedButton.icon(
           onPressed: onView,
-          child: Text(viewLabel),
+          style: OutlinedButton.styleFrom(
+            minimumSize: const Size(190, 48),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+          ),
+          icon: const Icon(Icons.visibility_outlined, size: 16),
+          label: Text(
+            viewLabel,
+            maxLines: 1,
+            softWrap: false,
+            overflow: TextOverflow.ellipsis,
+          ),
         ),
         if (onEdit != null) ...[
           const SizedBox(height: 8),
@@ -1901,6 +2116,18 @@ class _ActionSection extends StatelessWidget {
             onPressed: onEdit,
             icon: const Icon(Icons.edit_outlined, size: 16),
             label: const Text('Edit'),
+          ),
+        ],
+        if (onDelete != null) ...[
+          const SizedBox(height: 8),
+          ElevatedButton.icon(
+            onPressed: onDelete,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: scheme.error,
+              foregroundColor: scheme.onError,
+            ),
+            icon: const Icon(Icons.delete_outline, size: 16),
+            label: const Text('Delete'),
           ),
         ],
       ],

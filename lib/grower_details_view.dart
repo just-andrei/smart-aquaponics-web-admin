@@ -9,7 +9,6 @@ import 'navigation_provider.dart';
 import 'user_account_service.dart';
 import 'user_system.dart';
 
-const _teal = Color(0xFF0097A7);
 
 class GrowerDetailsView extends StatefulWidget {
   final String userDocId;
@@ -392,6 +391,9 @@ class _GrowerDetailsViewState extends State<GrowerDetailsView> {
         final email = _safeString(data['email'], fallback: widget.userId);
         final phone = _safeString(data['phone_num'], fallback: '-');
         final address = _safeString(data['address'], fallback: '-');
+        final firstName = _safeString(data['first_name']);
+        final lastName = _safeString(data['last_name']);
+        final fullName = '$firstName $lastName'.trim();
 
         return StreamBuilder<List<UserSystem>>(
           stream: UserAccountService.watchUserSystems(widget.userDocId),
@@ -423,6 +425,7 @@ class _GrowerDetailsViewState extends State<GrowerDetailsView> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _HeaderCard(
+                  name: fullName,
                   email: email,
                   phone: phone,
                   address: address,
@@ -539,7 +542,7 @@ class _GrowerDetailsViewState extends State<GrowerDetailsView> {
                 ),
               Expanded(
                 child: Container(
-                  color: scheme.background,
+                  color: scheme.surface,
                   child: Column(
                     children: [
                       _DetailsHeader(
@@ -579,7 +582,7 @@ class _DetailsHeader extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 12),
       decoration: BoxDecoration(
-        color: scheme.background,
+        color: scheme.surface,
         border: Border(
           bottom: BorderSide(color: scheme.outlineVariant),
         ),
@@ -614,52 +617,124 @@ class _DetailsHeader extends StatelessWidget {
 }
 
 class _HeaderCard extends StatelessWidget {
+  final String name;
   final String email;
   final String phone;
   final String address;
 
   const _HeaderCard({
+    required this.name,
     required this.email,
     required this.phone,
     required this.address,
   });
+
+  Color _avatarColor(String seed) {
+    const colors = [
+      Color(0xFF1F64D8),
+      Color(0xFF0EA5A0),
+      Color(0xFF7C3AED),
+      Color(0xFFD97706),
+      Color(0xFF16A34A),
+      Color(0xFFDC2626),
+    ];
+    final hash = seed.codeUnits.fold(0, (prev, c) => prev + c);
+    return colors[hash % colors.length];
+  }
+
+  String _initials(String n) {
+    final parts = n.trim().split(' ').where((p) => p.isNotEmpty).toList();
+    if (parts.isEmpty) return '?';
+    if (parts.length == 1) return parts[0][0].toUpperCase();
+    return '${parts[0][0]}${parts[parts.length - 1][0]}'.toUpperCase();
+  }
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     return Card(
-      elevation: 1.2,
+      elevation: 0,
       color: scheme.surface,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: scheme.outlineVariant),
       ),
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: scheme.primary, width: 1),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Profile',
-                style: textTheme.titleMedium?.copyWith(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            CircleAvatar(
+              radius: 28,
+              backgroundColor: _avatarColor(name.isEmpty ? email : name),
+              child: Text(
+                _initials(name.isEmpty ? email : name),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
                   fontWeight: FontWeight.w700,
                 ),
               ),
-              const SizedBox(height: 8),
-              Text('Email: $email', style: textTheme.bodyMedium),
-              const SizedBox(height: 4),
-              Text('Phone: $phone', style: textTheme.bodyMedium),
-              const SizedBox(height: 4),
-              Text('Address: $address', style: textTheme.bodyMedium),
-            ],
-          ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (name.isNotEmpty)
+                    Text(
+                      name,
+                      style: textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: scheme.onSurface,
+                      ),
+                    ),
+                  const SizedBox(height: 8),
+                  _ProfileRow(icon: Icons.email_outlined, label: email),
+                  const SizedBox(height: 4),
+                  _ProfileRow(
+                    icon: Icons.phone_outlined,
+                    label: phone == '-' ? 'Not provided' : phone,
+                  ),
+                  const SizedBox(height: 4),
+                  _ProfileRow(
+                    icon: Icons.location_on_outlined,
+                    label: address == '-' ? 'Not provided' : address,
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
+    );
+  }
+}
+
+class _ProfileRow extends StatelessWidget {
+  const _ProfileRow({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 14, color: scheme.onSurfaceVariant),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            label,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -1064,7 +1139,7 @@ class _SensorAveragesSection extends StatelessWidget {
             SizedBox(
               width: 150,
               child: DropdownButtonFormField<String>(
-                value: selectedRange,
+                initialValue: selectedRange,
                 decoration: InputDecoration(
                   isDense: true,
                   contentPadding: const EdgeInsets.symmetric(

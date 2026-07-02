@@ -1,0 +1,81 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // --- HELPER FUNCTIONS ---
+    function signedIn() { 
+      return request.auth != null; 
+    }
+    
+    function isAdmin() {
+      return signedIn() && 
+             exists(/databases/$(database)/documents/admin/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/admin/$(request.auth.uid)).data.status.lower() == 'active';
+    }
+
+    // --- ADMIN RULES ---
+    match /admin/{uid} {
+      allow read: if (signedIn() && request.auth.uid == uid) || isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // --- USER & SYSTEM RULES ---
+    match /user/{uid} {
+      allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
+      allow create: if isAdmin();
+      allow delete: if isAdmin();
+      
+      allow update: if isAdmin() || (signedIn() && request.auth.uid == uid);
+
+      // Recursive rules for systems sub-collection
+      match /systems/{systemId} {
+        allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
+        allow create: if isAdmin();
+        allow delete: if isAdmin();
+        allow update: if isAdmin() || (signedIn() && request.auth.uid == uid);
+
+        match /weekly_logs/{logId} {
+          allow read, create: if isAdmin() || (signedIn() && request.auth.uid == uid);
+          allow update, delete: if isAdmin();
+        }
+      }
+    }
+
+    // --- SUPPORTING COLLECTIONS ---
+    match /plants/{id} { 
+      allow read: if signedIn(); 
+      allow write: if isAdmin(); 
+    }
+    match /aquaculture/{id} { 
+      allow read: if signedIn(); 
+      allow write: if isAdmin(); 
+    }
+    match /notifications/{id} { 
+      allow read, update: if signedIn(); 
+      allow write: if isAdmin(); 
+    }
+    match /support_tickets/{id} { 
+      allow read, create, update: if signedIn(); 
+      allow delete: if isAdmin(); 
+    }
+    // ADDED TICKET HISTORY BACK HERE
+    match /ticket_history/{id} { 
+      allow read, write: if isAdmin(); 
+    }
+    match /master_sets/{id} { 
+      allow read, write: if isAdmin(); 
+    }
+    match /configuration/{id} { 
+      // UPDATED: Allow signed-in users to save their ecosystem configuration
+      allow read, write: if signedIn(); 
+    }
+
+    // ========================================================
+    // --- AQUAPONICS IOT SYSTEM RULES (BAGONG DAGDAG) ---
+    // Pinapahintulutan ang ESP32 (Anonymous Sign-In) na mag-update ng data
+    // ========================================================
+    match /{document=**} {
+  		allow read, write: if true;
+		}
+  }
+}
