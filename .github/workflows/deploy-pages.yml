@@ -30,7 +30,7 @@ jobs:
         run: flutter pub get
 
       - name: Build the web app
-        run: flutter build web --release --base-href /smart-aquaponics-web-admin/
+        run: flutter build web --release --base-href /aquaponics-website/
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
