@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 class InquirePage extends StatefulWidget {
@@ -40,6 +41,7 @@ class _InquirePageState extends State<InquirePage> {
   DateTime? _preferredSetupDate;
 
   bool _showCard = false;
+  bool _isSubmitting = false;
 
   static const List<String> _inquiryOptions = [
     'Plant Only',
@@ -132,14 +134,82 @@ class _InquirePageState extends State<InquirePage> {
     return null;
   }
 
-  void _submit() {
-    if (!_formKey.currentState!.validate()) {
+  Future<void> _submit() async {
+    if (_isSubmitting || !_formKey.currentState!.validate()) {
       return;
     }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Inquiry submitted successfully.')),
-    );
+    setState(() {
+      _isSubmitting = true;
+    });
+
+    final messenger = ScaffoldMessenger.of(context);
+
+    try {
+      await FirebaseFirestore.instance.collection('inquiry_submissions').add({
+        'name': _fullNameController.text.trim(),
+        'email': _emailController.text.trim(),
+        'contactNumber': _contactController.text.trim(),
+        'companyName': _companyController.text.trim(),
+        'location': _locationController.text.trim(),
+        'inquiryType': _inquiryType,
+        'farmSizeSqm': _farmSizeController.text.trim(),
+        'setupLocation': _setupLocation,
+        'budgetRange': _budgetRange,
+        'preferredSetupDate': _preferredSetupDate == null
+            ? null
+            : Timestamp.fromDate(_preferredSetupDate!),
+        'message': _messageController.text.trim(),
+        'createdAt': FieldValue.serverTimestamp(),
+        'status': 'new',
+        'source': 'web',
+      });
+
+      if (!mounted) {
+        return;
+      }
+
+      _formKey.currentState!.reset();
+      _fullNameController.clear();
+      _emailController.clear();
+      _contactController.clear();
+      _companyController.clear();
+      _locationController.clear();
+      _farmSizeController.clear();
+      _messageController.clear();
+      setState(() {
+        _inquiryType = null;
+        _budgetRange = null;
+        _setupLocation = 'Indoor';
+        _preferredSetupDate = null;
+      });
+
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Inquiry submitted successfully.')),
+      );
+    } on FirebaseException catch (e) {
+      if (!mounted) {
+        return;
+      }
+      messenger.showSnackBar(
+        SnackBar(content: Text('Submission failed: ${e.message ?? e.code}')),
+      );
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Submission failed. Please try again.'),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+        });
+      }
+    }
   }
 
   @override
@@ -393,7 +463,7 @@ class _InquirePageState extends State<InquirePage> {
                                       SizedBox(
                                         width: double.infinity,
                                         child: ElevatedButton(
-                                          onPressed: _submit,
+                                          onPressed: _isSubmitting ? null : _submit,
                                           style: ElevatedButton.styleFrom(
                                             backgroundColor: Colors.teal,
                                             foregroundColor: Colors.white,
@@ -402,13 +472,25 @@ class _InquirePageState extends State<InquirePage> {
                                               borderRadius: BorderRadius.circular(28),
                                             ),
                                           ),
-                                          child: const Text(
-                                            'Submit Inquiry',
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 16,
-                                            ),
-                                          ),
+                                          child: _isSubmitting
+                                              ? const SizedBox(
+                                                  width: 20,
+                                                  height: 20,
+                                                  child: CircularProgressIndicator(
+                                                    strokeWidth: 2,
+                                                    valueColor:
+                                                        AlwaysStoppedAnimation<Color>(
+                                                          Colors.white,
+                                                        ),
+                                                  ),
+                                                )
+                                              : const Text(
+                                                  'Submit Inquiry',
+                                                  style: TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 16,
+                                                  ),
+                                                ),
                                         ),
                                       ),
                                     ],

@@ -34,6 +34,11 @@ class UserManagementView extends StatefulWidget {
 class _UserManagementViewState extends State<UserManagementView> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final TextEditingController _searchCtrl = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
+  String? _growerCollection;
+  Stream<QuerySnapshot<Map<String, dynamic>>>? _growerStream;
+  String? _growerCollectionError;
+  bool _isResolvingGrowerCollection = true;
   String? _selectedDocId;
   bool _sortUserIdAscending = true;
 
@@ -62,6 +67,8 @@ class _UserManagementViewState extends State<UserManagementView> {
   }
 
   String _fullName(Map<String, dynamic> userData) {
+    final directName = _safeString(userData['name']);
+    if (directName.isNotEmpty) return directName;
     final first = _safeString(userData['first_name']).isNotEmpty
         ? _safeString(userData['first_name'])
         : _safeString(userData['firstName']);
@@ -92,11 +99,24 @@ class _UserManagementViewState extends State<UserManagementView> {
     final phone = _safeString(data['phone_num']).toLowerCase();
     final address = _safeString(data['address']).toLowerCase();
     final q = query.toLowerCase();
+    final directName = _safeString(data['name']).toLowerCase();
+    final status = _normalizedStatus(data);
+    final userId = _safeString(data['user_id'], fallback: doc.id).toLowerCase();
     return firstName.contains(q) ||
+        directName.contains(q) ||
         lastName.contains(q) ||
         email.contains(q) ||
         phone.contains(q) ||
-        address.contains(q);
+        address.contains(q) ||
+        status.contains(q) ||
+        userId.contains(q);
+  }
+
+  String _normalizedStatus(Map<String, dynamic> userData) {
+    return UserAccountService.normalizeStatus(
+      status: userData['status'],
+      isActive: userData['isActive'],
+    );
   }
 
   int _compareUserId(
@@ -189,8 +209,35 @@ class _UserManagementViewState extends State<UserManagementView> {
 
   @override
   void dispose() {
+    _searchFocusNode.dispose();
     _searchCtrl.dispose();
     super.dispose();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _resolveGrowerCollection();
+  }
+
+  Future<void> _resolveGrowerCollection() async {
+    try {
+      final growerCollection =
+          await UserAccountService.resolveGrowerCollectionName();
+      if (!mounted) return;
+      setState(() {
+        _growerCollection = growerCollection;
+        _growerStream = _firestore.collection(growerCollection).snapshots();
+        _growerCollectionError = null;
+        _isResolvingGrowerCollection = false;
+      });
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _growerCollectionError = error.toString();
+        _isResolvingGrowerCollection = false;
+      });
+    }
   }
 
   @override
@@ -207,73 +254,85 @@ class _UserManagementViewState extends State<UserManagementView> {
         : Colors.white;
 
     return Scaffold(
-      body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: _firestore.collection('user').snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return Center(
-              child: Text(
-                'Error loading users: ${snapshot.error}',
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
-              ),
-            );
-          }
-
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          final query = _searchCtrl.text.trim();
-          final allData = (snapshot.data?.docs ?? [])
-              .where((doc) => _canViewRole(_safeString(doc.data()['role'])))
-              .where((doc) => _matchesSearch(doc, query))
-              .toList();
-          allData.sort(_compareUserId);
-          final activeCount = allData.where((doc) {
-            return _safeString(doc.data()['status'], fallback: 'active')
-                    .toLowerCase() ==
-                'active';
-          }).length;
-
-          // Build a count map to detect duplicate user_ids
-          final userIdCount = <String, int>{};
-          for (final doc in snapshot.data?.docs ?? <QueryDocumentSnapshot<Map<String, dynamic>>>[]) {
-            final uid = _safeString(doc.data()['user_id'], fallback: '');
-            if (uid.isNotEmpty) {
-              userIdCount[uid] = (userIdCount[uid] ?? 0) + 1;
-            }
-          }
-
-          QueryDocumentSnapshot<Map<String, dynamic>>? selectedDoc;
-          for (final doc in allData) {
-            if (doc.id == _selectedDocId) {
-              selectedDoc = doc;
-              break;
-            }
-          }
-
-          return SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(24),
-                  decoration: BoxDecoration(
-                    color: panelColor,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: panelBorderColor),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: isDark ? 0.18 : 0.08),
-                        blurRadius: 22,
-                        offset: Offset(0, 10),
-                      ),
-                    ],
+      body: _isResolvingGrowerCollection
+          ? const Center(child: CircularProgressIndicator())
+          : _growerCollectionError != null
+              ? Center(
+                  child: Text(
+                    'Error resolving grower collection: $_growerCollectionError',
+                    style: TextStyle(color: Theme.of(context).colorScheme.error),
                   ),
+                )
+          : StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              stream: _growerStream,
+              builder: (context, snapshot) {
+                final growerCollection = _growerCollection ?? 'user';
+                if (snapshot.hasError) {
+                  return Center(
+                    child: Text(
+                      'Error loading users: ${snapshot.error}',
+                      style: TextStyle(color: Theme.of(context).colorScheme.error),
+                    ),
+                  );
+                }
+
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                final query = _searchCtrl.text.trim();
+                final allData = (snapshot.data?.docs ?? [])
+                    .where((doc) => _canViewRole(_safeString(doc.data()['role'])))
+                    .where((doc) => _matchesSearch(doc, query))
+                    .toList();
+                allData.sort(_compareUserId);
+                final activeCount = allData.where((doc) {
+                  return _normalizedStatus(doc.data()) == 'active';
+                }).length;
+
+                // Build a count map to detect duplicate user_ids
+                final userIdCount = <String, int>{};
+                for (final doc
+                    in snapshot.data?.docs ??
+                        <QueryDocumentSnapshot<Map<String, dynamic>>>[]) {
+                  final uid = _safeString(doc.data()['user_id'], fallback: '');
+                  if (uid.isNotEmpty) {
+                    userIdCount[uid] = (userIdCount[uid] ?? 0) + 1;
+                  }
+                }
+
+                QueryDocumentSnapshot<Map<String, dynamic>>? selectedDoc;
+                for (final doc in allData) {
+                  if (doc.id == _selectedDocId) {
+                    selectedDoc = doc;
+                    break;
+                  }
+                }
+
+                return SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      Container(
+                        padding: const EdgeInsets.all(24),
+                        decoration: BoxDecoration(
+                          color: panelColor,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: panelBorderColor),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(
+                                alpha: isDark ? 0.18 : 0.08,
+                              ),
+                              blurRadius: 22,
+                              offset: Offset(0, 10),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
                       Wrap(
                         spacing: 12,
                         runSpacing: 12,
@@ -304,7 +363,10 @@ class _UserManagementViewState extends State<UserManagementView> {
                             runSpacing: 10,
                             children: [
                               OutlinedButton.icon(
-                                onPressed: () => _showUserDialog(null),
+                                onPressed: () => _showUserDialog(
+                                  null,
+                                  growerCollection,
+                                ),
                                 icon: const Icon(Icons.person_add_alt_1_rounded),
                                 label: const Text('Create Grower'),
                               ),
@@ -322,6 +384,7 @@ class _UserManagementViewState extends State<UserManagementView> {
                                             selectedDoc.id,
                                             fullName,
                                             numericId,
+                                            growerCollection,
                                           );
                                         },
                                   style: FilledButton.styleFrom(
@@ -334,16 +397,17 @@ class _UserManagementViewState extends State<UserManagementView> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 18),
-                      Wrap(
-                        spacing: 12,
-                        runSpacing: 12,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        children: [
+                            const SizedBox(height: 18),
+                            Wrap(
+                              spacing: 12,
+                              runSpacing: 12,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              children: [
                           SizedBox(
                             width: 380,
                             child: TextField(
                               controller: _searchCtrl,
+                              focusNode: _searchFocusNode,
                               onChanged: (_) => setState(() {}),
                               decoration: InputDecoration(
                                 labelText: 'Search growers',
@@ -396,102 +460,118 @@ class _UserManagementViewState extends State<UserManagementView> {
                                   : 'User ID Descending',
                             ),
                           ),
-                        ],
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
+                      const SizedBox(height: 16),
+                      if (allData.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 16),
+                          child: Text(
+                            'No users found.',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        )
+                      else
+                        ListView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: allData.length,
+                          itemBuilder: (context, index) {
+                            final doc = allData[index];
+                            final data = doc.data();
+                            final userId = _displayUserId(data['user_id'], doc.id);
+                            final userIdForQuery = _userIdForQuery(
+                              data['user_id'],
+                              doc.id,
+                            );
+                            final fullName = _fullName(data);
+                            final email = _safeString(
+                              data['email'],
+                              fallback: 'No email provided',
+                            );
+                            final address = _safeString(
+                              data['address'],
+                              fallback: 'No address provided',
+                            );
+                            final status = _safeString(
+                              _normalizedStatus(data),
+                              fallback: 'active',
+                            );
+                            final role = _safeString(
+                              data['role'],
+                              fallback: 'grower',
+                            );
+
+                            final rawUserId = _safeString(
+                              data['user_id'],
+                              fallback: '',
+                            );
+                            final isDuplicate = rawUserId.isNotEmpty &&
+                                (userIdCount[rawUserId] ?? 0) > 1;
+
+                            return GrowerCard(
+                              userCollection: growerCollection,
+                              userDocId: doc.id,
+                              userId: userId,
+                              fullName: fullName,
+                              email: email,
+                              address: address,
+                              status: status,
+                              role: role,
+                              isDuplicate: isDuplicate,
+                              onSelect: () {
+                                setState(() => _selectedDocId = doc.id);
+                              },
+                              onView: () => _openUserDetails(
+                                doc,
+                                userIdForQuery,
+                                growerCollection,
+                              ),
+                              onEdit: () => _editUser(doc, growerCollection),
+                            );
+                          },
+                        ),
                     ],
                   ),
-                ),
-                const SizedBox(height: 16),
-                if (allData.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 16),
-                    child: Text(
-                      'No users found.',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  )
-                else
-                  ListView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: allData.length,
-                    itemBuilder: (context, index) {
-                      final doc = allData[index];
-                      final data = doc.data();
-                      final userId = _displayUserId(data['user_id'], doc.id);
-                      final userIdForQuery = _userIdForQuery(
-                        data['user_id'],
-                        doc.id,
-                      );
-                      final fullName = _fullName(data);
-                      final email = _safeString(
-                        data['email'],
-                        fallback: 'No email provided',
-                      );
-                      final address = _safeString(
-                        data['address'],
-                        fallback: 'No address provided',
-                      );
-                      final status = _safeString(
-                        data['status'],
-                        fallback: 'active',
-                      );
-                      final role = _safeString(
-                        data['role'],
-                        fallback: 'grower',
-                      );
-
-                      final rawUserId = _safeString(data['user_id'], fallback: '');
-                      final isDuplicate = rawUserId.isNotEmpty &&
-                          (userIdCount[rawUserId] ?? 0) > 1;
-
-                      return GrowerCard(
-                        userDocId: doc.id,
-                        userId: userId,
-                        fullName: fullName,
-                        email: email,
-                        address: address,
-                        status: status,
-                        role: role,
-                        isDuplicate: isDuplicate,
-                        onSelect: () {
-                          setState(() => _selectedDocId = doc.id);
-                        },
-                        onView: () => _openUserDetails(doc, userIdForQuery),
-                        onEdit: () => _editUser(doc),
-                      );
-                    },
-                  ),
-              ],
+                );
+              },
             ),
-          );
-        },
-      ),
     );
   }
 
-  void _showUserDialog(DocumentSnapshot<Map<String, dynamic>>? document) {
+  void _showUserDialog(
+    DocumentSnapshot<Map<String, dynamic>>? document,
+    String growerCollection,
+  ) {
     showDialog<void>(
       context: context,
       builder: (context) => _UserDialog(
         document: document,
+        growerCollection: growerCollection,
         currentUserRole: widget.currentUserRole,
       ),
     );
   }
 
-  void _editUser(DocumentSnapshot<Map<String, dynamic>> document) {
-    _showUserDialog(document);
+  void _editUser(
+    DocumentSnapshot<Map<String, dynamic>> document,
+    String growerCollection,
+  ) {
+    _showUserDialog(document, growerCollection);
   }
 
   Future<void> _hardDeleteUser({
+    required String growerCollection,
     required String uid,
     required int? numericUserId,
   }) async {
-    final userRef = _firestore.collection('user').doc(uid);
+    final userRef = _firestore.collection(growerCollection).doc(uid);
     final refsToDelete = <DocumentReference>[];
 
     final systemsSnapshot = await userRef.collection('systems').get();
@@ -531,7 +611,12 @@ class _UserManagementViewState extends State<UserManagementView> {
     await UserAccountService.deleteUserAccount(uid: uid);
   }
 
-  void _deleteUser(String id, String name, int? numericUserId) {
+  void _deleteUser(
+    String id,
+    String name,
+    int? numericUserId,
+    String growerCollection,
+  ) {
     final rootContext = context;
     showDialog(
       context: rootContext,
@@ -586,6 +671,7 @@ class _UserManagementViewState extends State<UserManagementView> {
                           setDialogState(() => isDeleting = true);
                           try {
                             await _hardDeleteUser(
+                              growerCollection: growerCollection,
                               uid: id,
                               numericUserId: numericUserId,
                             );
@@ -625,10 +711,12 @@ class _UserManagementViewState extends State<UserManagementView> {
   void _openUserDetails(
     QueryDocumentSnapshot<Map<String, dynamic>> doc,
     String userIdForQuery,
+    String growerCollection,
   ) {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => GrowerDetailsView(
+          userCollection: growerCollection,
           userDocId: doc.id,
           userId: userIdForQuery,
           currentUserRole: widget.currentUserRole,
@@ -642,6 +730,7 @@ class _UserManagementViewState extends State<UserManagementView> {
 }
 
 class GrowerCard extends StatefulWidget {
+  final String userCollection;
   final String userDocId;
   final String userId;
   final String fullName;
@@ -656,6 +745,7 @@ class GrowerCard extends StatefulWidget {
 
   const GrowerCard({
     super.key,
+    required this.userCollection,
     required this.userDocId,
     required this.userId,
     required this.fullName,
@@ -733,6 +823,7 @@ class _GrowerCardState extends State<GrowerCard> {
                     docId: widget.userDocId,
                   );
                   final statusMetrics = _GrowerStatusSection(
+                    userCollection: widget.userCollection,
                     userDocId: widget.userDocId,
                   );
                   final actions = _GrowerActionSection(
@@ -913,9 +1004,11 @@ class _GrowerDetailsSection extends StatelessWidget {
 
 class _GrowerStatusSection extends StatelessWidget {
   const _GrowerStatusSection({
+    required this.userCollection,
     required this.userDocId,
   });
 
+  final String userCollection;
   final String userDocId;
 
   @override
@@ -933,16 +1026,23 @@ class _GrowerStatusSection extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 8),
-        _SystemUnitsChip(userDocId: userDocId),
+        _SystemUnitsChip(
+          userCollection: userCollection,
+          userDocId: userDocId,
+        ),
       ],
     );
   }
 }
 
 class _SystemUnitsChip extends StatefulWidget {
+  final String userCollection;
   final String userDocId;
 
-  const _SystemUnitsChip({required this.userDocId});
+  const _SystemUnitsChip({
+    required this.userCollection,
+    required this.userDocId,
+  });
 
   @override
   State<_SystemUnitsChip> createState() => _SystemUnitsChipState();
@@ -974,7 +1074,7 @@ class _SystemUnitsChipState extends State<_SystemUnitsChip> {
     final textTheme = Theme.of(context).textTheme;
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
       stream: FirebaseFirestore.instance
-          .collection('user')
+          .collection(widget.userCollection)
           .doc(widget.userDocId)
           .collection('systems')
           .snapshots(),
@@ -1145,9 +1245,14 @@ class _GrowerActionSection extends StatelessWidget {
 
 class _UserDialog extends StatefulWidget {
   final DocumentSnapshot<Map<String, dynamic>>? document;
+  final String growerCollection;
   final String currentUserRole;
 
-  const _UserDialog({this.document, required this.currentUserRole});
+  const _UserDialog({
+    this.document,
+    required this.growerCollection,
+    required this.currentUserRole,
+  });
 
   @override
   State<_UserDialog> createState() => _UserDialogState();
@@ -1168,7 +1273,7 @@ class _UserDialogState extends State<_UserDialog> {
   Future<int> _getNextNumericUserId() async {
     try {
       final snapshot = await FirebaseFirestore.instance
-          .collection('user')
+          .collection(widget.growerCollection)
           .orderBy('user_id', descending: true)
           .limit(1)
           .get();
@@ -1187,7 +1292,7 @@ class _UserDialogState extends State<_UserDialog> {
 
     try {
       final numericSnapshot = await FirebaseFirestore.instance
-          .collection('user')
+          .collection(widget.growerCollection)
           .where('user_id', isGreaterThanOrEqualTo: 0)
           .orderBy('user_id', descending: true)
           .limit(1)
@@ -1221,8 +1326,11 @@ class _UserDialogState extends State<_UserDialog> {
     _addressCtrl = TextEditingController(
       text: data['address']?.toString() ?? '',
     );
-    final statusText = data['status']?.toString().trim().toLowerCase();
-    _statusValue = (statusText == 'inactive') ? 'inactive' : 'active';
+    final normalizedStatus = UserAccountService.normalizeStatus(
+      status: data['status'],
+      isActive: data['isActive'],
+    );
+    _statusValue = normalizedStatus == 'inactive' ? 'inactive' : 'active';
   }
 
   @override
@@ -1239,18 +1347,23 @@ class _UserDialogState extends State<_UserDialog> {
     final messenger = ScaffoldMessenger.of(context);
     final nav = Navigator.of(context);
     if (!_formKey.currentState!.validate()) return;
+    final fullName =
+        '${_firstNameCtrl.text.trim()} ${_lastNameCtrl.text.trim()}'.trim();
     try {
       if (_isEditing) {
         setState(() => _isSaving = true);
         await widget.document!.reference.update({
           'first_name': _firstNameCtrl.text.trim(),
           'last_name': _lastNameCtrl.text.trim(),
+          'name': fullName,
           'email': _emailCtrl.text.trim().toLowerCase(),
           'phone_num': _phoneNumberCtrl.text.trim(),
           'address': _addressCtrl.text.trim(),
           'role': 'grower',
           'status': _statusValue,
+          'isActive': _statusValue == 'active',
           'updated_at': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
         });
       } else {
         final nextUserId = await _getNextNumericUserId();
@@ -1267,6 +1380,7 @@ class _UserDialogState extends State<_UserDialog> {
           firstName: _firstNameCtrl.text,
           lastName: _lastNameCtrl.text,
           email: _emailCtrl.text,
+          targetCollection: widget.growerCollection,
           phoneNumber: _phoneNumberCtrl.text,
           address: _addressCtrl.text,
           role: 'grower',

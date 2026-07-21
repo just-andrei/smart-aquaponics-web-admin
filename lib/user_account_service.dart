@@ -27,13 +27,42 @@ class UserProfileRecord {
   });
 }
 
+class UserSessionAccess {
+  final String uid;
+  final String email;
+  final String role;
+  final String status;
+  final String sourceCollection;
+  final Map<String, dynamic>? profileData;
+
+  const UserSessionAccess({
+    required this.uid,
+    required this.email,
+    required this.role,
+    required this.status,
+    required this.sourceCollection,
+    required this.profileData,
+  });
+
+  bool get isAuthenticated => uid.trim().isNotEmpty;
+
+  bool get isActive => status == 'active';
+
+  bool get isAdmin => UserAccountService.isAdminRole(role);
+
+  bool get isGrower => UserAccountService.isGrowerRole(role);
+}
+
 class UserAccountService {
   UserAccountService._();
 
   static const List<String> roleCollectionsInPriority = [
+    'users',
     'admin',
     'user',
   ];
+
+  static const List<String> growerCollectionsInPriority = ['user', 'users'];
 
   static String normalizeRole(String role) {
     final normalized = role.trim().toLowerCase();
@@ -46,10 +75,82 @@ class UserAccountService {
 
   static bool isGrowerRole(String role) => normalizeRole(role) == 'grower';
 
+  static String fallbackRoleForCollection(String collection) {
+    switch (collection.trim().toLowerCase()) {
+      case 'admin':
+        return 'admin';
+      case 'user':
+        return 'grower';
+      default:
+        return 'unknown';
+    }
+  }
+
+  static String normalizeStatus({dynamic status, dynamic isActive}) {
+    if (isActive is bool) {
+      return isActive ? 'active' : 'inactive';
+    }
+
+    final normalized = status?.toString().trim().toLowerCase() ?? '';
+    if (normalized.isEmpty) return 'active';
+    if (normalized == 'active') return 'active';
+    if (normalized == 'inactive' ||
+        normalized == 'disabled' ||
+        normalized == 'blocked' ||
+        normalized == 'suspended') {
+      return 'inactive';
+    }
+    return normalized;
+  }
+
   static String collectionForRole(String role) {
     final normalizedRole = normalizeRole(role);
     if (normalizedRole == 'admin') return 'admin';
     return 'user';
+  }
+
+  static Future<String> resolveGrowerCollectionName() async {
+    for (final collection in growerCollectionsInPriority) {
+      try {
+        final snapshot = await FirebaseFirestore.instance
+            .collection(collection)
+            .limit(1)
+            .get();
+        if (snapshot.docs.isNotEmpty) return collection;
+      } on FirebaseException catch (e) {
+        if (e.code != 'permission-denied') rethrow;
+      }
+    }
+    return 'user';
+  }
+
+  static Future<UserSessionAccess> resolveSessionAccessForUser(
+    User user,
+  ) async {
+    final email = (user.email ?? '').trim().toLowerCase();
+    final profileRecord = await getProfileByUidOrEmail(
+      uid: user.uid,
+      email: email,
+    );
+    final profile = profileRecord?.data;
+    final fallbackRole = profileRecord == null
+        ? 'unknown'
+        : fallbackRoleForCollection(profileRecord.collection);
+
+    final role = normalizeRole((profile?['role'] ?? fallbackRole).toString());
+    final status = normalizeStatus(
+      status: profile?['status'],
+      isActive: profile?['isActive'],
+    );
+
+    return UserSessionAccess(
+      uid: user.uid,
+      email: email,
+      role: role,
+      status: status,
+      sourceCollection: profileRecord?.collection ?? '',
+      profileData: profile,
+    );
   }
 
   static String generateSecurePassword({int length = 18}) {
@@ -80,6 +181,7 @@ class UserAccountService {
     required String email,
     required String role,
     required int userId,
+    String? targetCollection,
     String phoneNumber = '',
     String address = '',
     String status = 'active',
@@ -112,18 +214,26 @@ class UserAccountService {
       final createdUser = credential.user!;
       try {
         final uid = createdUser.uid;
-        final collection = collectionForRole(normalizedRole);
+        final collection =
+            targetCollection != null && targetCollection.trim().isNotEmpty
+            ? targetCollection.trim()
+            : collectionForRole(normalizedRole);
+        final fullName = '${firstName.trim()} ${lastName.trim()}'.trim();
         await FirebaseFirestore.instance.collection(collection).doc(uid).set({
           'user_id': numericUserId,
           'first_name': firstName.trim(),
           'last_name': lastName.trim(),
+          'name': fullName,
           'email': normalizedEmail,
           'phone_num': phoneNumber.trim(),
           'address': address.trim(),
           'role': normalizedRole,
           'status': normalizedStatus,
+          'isActive': normalizedStatus == 'active',
           'updated_at': FieldValue.serverTimestamp(),
           'created_at': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+          'createdAt': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
 
         await FirebaseAuth.instance.sendPasswordResetEmail(
@@ -326,38 +436,38 @@ class UserAccountService {
       region: 'us-central1',
     ).httpsCallable('deleteUserAccount');
 
-    await callable.call(<String, dynamic>{
-      'uid': normalizedUid,
-    });
+    await callable.call(<String, dynamic>{'uid': normalizedUid});
   }
 
-  static Stream<List<UserSystem>> watchUserSystems(String uid) {
+  static Stream<List<UserSystem>> watchUserSystems(
+    String uid, {
+    String userCollection = 'user',
+  }) {
     final normalizedUid = uid.trim();
     if (normalizedUid.isEmpty) {
       return const Stream<List<UserSystem>>.empty();
     }
     return FirebaseFirestore.instance
-        .collection('user')
+        .collection(userCollection)
         .doc(normalizedUid)
         .collection('systems')
         .snapshots()
         .map(
-          (snapshot) =>
-              snapshot.docs.map(UserSystem.fromFirestore).toList(),
+          (snapshot) => snapshot.docs.map(UserSystem.fromFirestore).toList(),
         );
   }
 
   static Future<void> updateSystemData(
     String uid,
     String systemId,
-    Map<String, dynamic> data,
-  ) {
+    Map<String, dynamic> data, {
+    String userCollection = 'user',
+  }) {
     return FirebaseFirestore.instance
-        .collection('user')
+        .collection(userCollection)
         .doc(uid)
         .collection('systems')
         .doc(systemId)
         .update(data);
   }
-
 }

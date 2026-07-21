@@ -29,21 +29,49 @@ class AdminSidebar extends StatelessWidget {
   Widget build(BuildContext context) {
     final navItems = <_NavItem>[
       const _NavItem(index: 0, icon: Icons.home_rounded, label: 'Dashboard'),
-      const _NavItem(index: 1, icon: Icons.people_alt_rounded, label: 'Growers'),
-      const _NavItem(index: 2, icon: Icons.layers_rounded, label: 'System Sets'),
-      const _NavItem(index: 3, icon: Icons.support_agent_rounded, label: 'Support Tickets'),
-      const _NavItem(index: 4, icon: Icons.auto_awesome_rounded, label: 'Compatibility'),
+      const _NavItem(
+        index: 1,
+        icon: Icons.people_alt_rounded,
+        label: 'Growers',
+      ),
+      const _NavItem(
+        index: 2,
+        icon: Icons.mail_outline_rounded,
+        label: 'Messages',
+      ),
+      const _NavItem(
+        index: 3,
+        icon: Icons.layers_rounded,
+        label: 'System Sets',
+      ),
+      const _NavItem(
+        index: 4,
+        icon: Icons.support_agent_rounded,
+        label: 'Support Tickets',
+      ),
+      const _NavItem(
+        index: 5,
+        icon: Icons.auto_awesome_rounded,
+        label: 'Compatibility',
+      ),
     ];
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final dividerColor = isDark ? const Color(0xFF22352D) : AquaponicsColors.adminBorder;
-    final brandTextColor = isDark ? Colors.white : AquaponicsColors.greenhouseText;
+    final dividerColor = isDark
+        ? const Color(0xFF22352D)
+        : AquaponicsColors.adminBorder;
+    final brandTextColor = isDark
+        ? Colors.white
+        : AquaponicsColors.greenhouseText;
 
     return Column(
       children: [
         Container(
           height: 108,
-          padding: EdgeInsets.symmetric(horizontal: collapsed ? 10 : 16, vertical: 14),
+          padding: EdgeInsets.symmetric(
+            horizontal: collapsed ? 10 : 16,
+            vertical: 14,
+          ),
           alignment: collapsed ? Alignment.center : Alignment.centerLeft,
           decoration: BoxDecoration(
             gradient: isDark
@@ -57,9 +85,7 @@ class AdminSidebar extends StatelessWidget {
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
-            border: Border(
-              bottom: BorderSide(color: dividerColor),
-            ),
+            border: Border(bottom: BorderSide(color: dividerColor)),
           ),
           child: collapsed
               ? Container(
@@ -77,7 +103,10 @@ class AdminSidebar extends StatelessWidget {
                     ],
                   ),
                   alignment: Alignment.center,
-                  child: const Icon(Icons.water_drop_rounded, color: Colors.white),
+                  child: const Icon(
+                    Icons.water_drop_rounded,
+                    color: Colors.white,
+                  ),
                 )
               : Row(
                   children: [
@@ -161,7 +190,9 @@ class AdminSidebar extends StatelessWidget {
         if (showToggle)
           _buildBottomAction(
             context,
-            icon: collapsed ? Icons.keyboard_double_arrow_right : Icons.keyboard_double_arrow_left,
+            icon: collapsed
+                ? Icons.keyboard_double_arrow_right
+                : Icons.keyboard_double_arrow_left,
             label: collapsed ? 'Expand' : 'Collapse',
             collapsed: collapsed,
             isDark: isDark,
@@ -180,8 +211,12 @@ class AdminSidebar extends StatelessWidget {
     required bool isDark,
   }) {
     final selected = navigationProvider.selectedIndex == item.index;
-      final defaultIconColor = isDark ? const Color(0xFFA4C0B2) : AquaponicsColors.greenhouseSubtext;
-      final defaultTextColor = isDark ? const Color(0xFFE0ECE5) : AquaponicsColors.greenhouseText;
+    final defaultIconColor = isDark
+        ? const Color(0xFFA4C0B2)
+        : AquaponicsColors.greenhouseSubtext;
+    final defaultTextColor = isDark
+        ? const Color(0xFFE0ECE5)
+        : AquaponicsColors.greenhouseText;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -203,18 +238,21 @@ class AdminSidebar extends StatelessWidget {
               navigationProvider.setIndex(item.index);
               if (isDrawer) Navigator.of(context).pop();
             },
-              child: SizedBox(
-                height: 48,
-                child: Row(
-                mainAxisAlignment:
-                    collapsed ? MainAxisAlignment.center : MainAxisAlignment.start,
+            child: SizedBox(
+              height: 48,
+              child: Row(
+                mainAxisAlignment: collapsed
+                    ? MainAxisAlignment.center
+                    : MainAxisAlignment.start,
                 children: [
                   if (selected && !collapsed)
                     Container(
                       width: 4,
                       height: 24,
                       decoration: BoxDecoration(
-                        color: isDark ? Colors.white : AquaponicsColors.mossGreen,
+                        color: isDark
+                            ? Colors.white
+                            : AquaponicsColors.mossGreen,
                         borderRadius: BorderRadius.circular(999),
                       ),
                     ),
@@ -232,9 +270,13 @@ class AdminSidebar extends StatelessWidget {
                       item.label,
                       style: TextStyle(
                         color: selected
-                            ? (isDark ? Colors.white : AquaponicsColors.mossGreen)
+                            ? (isDark
+                                  ? Colors.white
+                                  : AquaponicsColors.mossGreen)
                             : defaultTextColor,
-                        fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+                        fontWeight: selected
+                            ? FontWeight.w700
+                            : FontWeight.w600,
                       ),
                     ),
                   ],
@@ -271,8 +313,9 @@ class AdminSidebar extends StatelessWidget {
           child: SizedBox(
             height: 42,
             child: Row(
-              mainAxisAlignment:
-                  collapsed ? MainAxisAlignment.center : MainAxisAlignment.start,
+              mainAxisAlignment: collapsed
+                  ? MainAxisAlignment.center
+                  : MainAxisAlignment.start,
               children: [
                 if (!collapsed) const SizedBox(width: 12),
                 Icon(icon, size: 18, color: resolvedColor),
@@ -280,7 +323,10 @@ class AdminSidebar extends StatelessWidget {
                   const SizedBox(width: 12),
                   Text(
                     label,
-                    style: TextStyle(color: resolvedColor, fontWeight: FontWeight.w600),
+                    style: TextStyle(
+                      color: resolvedColor,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ],
               ],

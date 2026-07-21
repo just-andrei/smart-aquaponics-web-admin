@@ -2,80 +2,333 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // --- HELPER FUNCTIONS ---
-    function signedIn() { 
-      return request.auth != null; 
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // admin/{uid}
+    //   - role: string, optional legacy/admin marker
+    //   - status: string, optional active/inactive marker
+    //   - isActive: bool, optional active/inactive marker
+    //
+    // user/{uid}, users/{uid}
+    //   - Grower/farmer profile documents with private account/profile data.
+    //   - Nested systems/{systemId}
+    //   - Nested systems/{systemId}/weekly_logs/{logId}
+    //   - Nested systems/{systemId}/harvest_records/{recordId}
+    //   - Nested systems/{systemId}/plant_status_records/{recordId}
+    //   - Nested systems/{systemId}/aquaculture_status_records/{recordId}
+    //
+    // contact_submissions/{id}
+    //   - name: string
+    //   - email: string
+    //   - subject: string
+    //   - message: string
+    //   - createdAt: timestamp
+    //   - status: string, expected "new" on public create
+    //   - source: string, expected "web" on public create
+    //
+    // inquiry_submissions/{id}
+    //   - name: string
+    //   - email: string
+    //   - contactNumber: string
+    //   - companyName: string
+    //   - location: string
+    //   - inquiryType: string
+    //   - farmSizeSqm: string
+    //   - setupLocation: string
+    //   - budgetRange: string|null
+    //   - preferredSetupDate: timestamp|null
+    //   - message: string
+    //   - createdAt: timestamp
+    //   - status: string, expected "new" on public create
+    //   - source: string, expected "web" on public create
+    //
+    // Admin-side collections used by this web app:
+    //   plants, aquaculture, support_tickets, ticket_history,
+    //   master_sets, notifications, configuration
+    //
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function signedIn() {
+      return request.auth != null;
     }
-    
+
+    function isOwner(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function adminDocPath() {
+      return /databases/$(database)/documents/admin/$(request.auth.uid);
+    }
+
+    function adminDocExists() {
+      return signedIn() && exists(adminDocPath());
+    }
+
+    function adminData() {
+      return get(adminDocPath()).data;
+    }
+
+    function adminRoleIsAllowed() {
+      let data = adminData();
+      return !data.keys().hasAny(['role']) ||
+          (data.role is string && data.role.lower() in ['admin', 'manager']);
+    }
+
+    function adminStatusIsActive() {
+      let data = adminData();
+      return (!data.keys().hasAny(['status']) && !data.keys().hasAny(['isActive'])) ||
+          (data.keys().hasAny(['status']) &&
+              data.status is string &&
+              data.status.lower() == 'active') ||
+          (data.keys().hasAny(['isActive']) && data.isActive == true);
+    }
+
     function isAdmin() {
-      return signedIn() && 
-             exists(/databases/$(database)/documents/admin/$(request.auth.uid)) &&
-             get(/databases/$(database)/documents/admin/$(request.auth.uid)).data.status.lower() == 'active';
+      return adminDocExists() && adminRoleIsAllowed() && adminStatusIsActive();
     }
 
-    // --- ADMIN RULES ---
+    function validString(value, minLen, maxLen) {
+      return value is string &&
+          value.size() >= minLen &&
+          value.size() <= maxLen;
+    }
+
+    function validOptionalString(value, maxLen) {
+      return value == null || (value is string && value.size() <= maxLen);
+    }
+
+    function validEmail(value) {
+      return value is string &&
+          value.size() <= 254 &&
+          value.matches('^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$');
+    }
+
+    function isRecentTimestamp(value) {
+      return value is timestamp &&
+          value > request.time - duration.value(10, 'm') &&
+          value <= request.time;
+    }
+
+    function isValidContactSubmission() {
+      let data = request.resource.data;
+      return data.keys().hasOnly([
+            'name',
+            'email',
+            'subject',
+            'message',
+            'createdAt',
+            'status',
+            'source',
+          ]) &&
+          data.keys().hasAll([
+            'name',
+            'email',
+            'subject',
+            'message',
+            'createdAt',
+            'status',
+            'source',
+          ]) &&
+          validString(data.name, 1, 120) &&
+          validEmail(data.email) &&
+          validString(data.subject, 1, 160) &&
+          validString(data.message, 1, 4000) &&
+          isRecentTimestamp(data.createdAt) &&
+          data.status is string &&
+          data.status == 'new' &&
+          data.source is string &&
+          data.source == 'web';
+    }
+
+    function isValidInquirySubmission() {
+      let data = request.resource.data;
+      return data.keys().hasOnly([
+            'name',
+            'email',
+            'contactNumber',
+            'companyName',
+            'location',
+            'inquiryType',
+            'farmSizeSqm',
+            'setupLocation',
+            'budgetRange',
+            'preferredSetupDate',
+            'message',
+            'createdAt',
+            'status',
+            'source',
+          ]) &&
+          data.keys().hasAll([
+            'name',
+            'email',
+            'contactNumber',
+            'companyName',
+            'location',
+            'inquiryType',
+            'farmSizeSqm',
+            'setupLocation',
+            'budgetRange',
+            'preferredSetupDate',
+            'message',
+            'createdAt',
+            'status',
+            'source',
+          ]) &&
+          validString(data.name, 1, 120) &&
+          validEmail(data.email) &&
+          validString(data.contactNumber, 7, 32) &&
+          validOptionalString(data.companyName, 160) &&
+          validString(data.location, 1, 240) &&
+          validString(data.inquiryType, 1, 120) &&
+          validOptionalString(data.farmSizeSqm, 40) &&
+          data.setupLocation is string &&
+          data.setupLocation in ['Indoor', 'Outdoor'] &&
+          validOptionalString(data.budgetRange, 40) &&
+          (data.preferredSetupDate == null || data.preferredSetupDate is timestamp) &&
+          validOptionalString(data.message, 4000) &&
+          isRecentTimestamp(data.createdAt) &&
+          data.status is string &&
+          data.status == 'new' &&
+          data.source is string &&
+          data.source == 'web';
+    }
+
+    // ===============================================================
+    // Admin Profiles
+    // ===============================================================
     match /admin/{uid} {
-      allow read: if (signedIn() && request.auth.uid == uid) || isAdmin();
-      allow write: if isAdmin();
+      allow read: if isOwner(uid) || isAdmin();
+      allow create, update, delete: if isAdmin();
     }
 
-    // --- USER & SYSTEM RULES ---
+    // ===============================================================
+    // Grower/Farmer Profiles and Nested System Data
+    // Keep public access denied. Preserve owner reads and nested system access
+    // needed by existing live-compatible data paths without allowing self-role
+    // escalation on top-level profile documents.
+    // ===============================================================
     match /user/{uid} {
-      allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
-      allow create: if isAdmin();
-      allow delete: if isAdmin();
-      
-      allow update: if isAdmin() || (signedIn() && request.auth.uid == uid);
+      allow read: if isOwner(uid) || isAdmin();
+      allow create, update, delete: if isAdmin();
 
-      // Recursive rules for systems sub-collection
       match /systems/{systemId} {
-        allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
-        allow create: if isAdmin();
-        allow delete: if isAdmin();
-        allow update: if isAdmin() || (signedIn() && request.auth.uid == uid);
+        allow read: if isOwner(uid) || isAdmin();
+        allow create, update, delete: if isOwner(uid) || isAdmin();
 
         match /weekly_logs/{logId} {
-          allow read, create: if isAdmin() || (signedIn() && request.auth.uid == uid);
+          allow read: if isOwner(uid) || isAdmin();
+          allow create: if isOwner(uid) || isAdmin();
           allow update, delete: if isAdmin();
+        }
+
+        match /harvest_records/{recordId} {
+          allow read, create, update: if isAdmin();
+          allow delete: if false;
+        }
+
+        match /plant_status_records/{recordId} {
+          allow read, create, update: if isAdmin();
+          allow delete: if false;
+        }
+
+        match /aquaculture_status_records/{recordId} {
+          allow read, create, update: if isAdmin();
+          allow delete: if false;
         }
       }
     }
 
-    // --- SUPPORTING COLLECTIONS ---
-    match /plants/{id} { 
-      allow read: if signedIn(); 
-      allow write: if isAdmin(); 
-    }
-    match /aquaculture/{id} { 
-      allow read: if signedIn(); 
-      allow write: if isAdmin(); 
-    }
-    match /notifications/{id} { 
-      allow read, update: if signedIn(); 
-      allow write: if isAdmin(); 
-    }
-    match /support_tickets/{id} { 
-      allow read, create, update: if signedIn(); 
-      allow delete: if isAdmin(); 
-    }
-    // ADDED TICKET HISTORY BACK HERE
-    match /ticket_history/{id} { 
-      allow read, write: if isAdmin(); 
-    }
-    match /master_sets/{id} { 
-      allow read, write: if isAdmin(); 
-    }
-    match /configuration/{id} { 
-      // UPDATED: Allow signed-in users to save their ecosystem configuration
-      allow read, write: if signedIn(); 
+    match /users/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow create, update, delete: if isAdmin();
+
+      match /systems/{systemId} {
+        allow read: if isOwner(uid) || isAdmin();
+        allow create, update, delete: if isOwner(uid) || isAdmin();
+
+        match /weekly_logs/{logId} {
+          allow read: if isOwner(uid) || isAdmin();
+          allow create: if isOwner(uid) || isAdmin();
+          allow update, delete: if isAdmin();
+        }
+
+        match /harvest_records/{recordId} {
+          allow read, create, update: if isAdmin();
+          allow delete: if false;
+        }
+
+        match /plant_status_records/{recordId} {
+          allow read, create, update: if isAdmin();
+          allow delete: if false;
+        }
+
+        match /aquaculture_status_records/{recordId} {
+          allow read, create, update: if isAdmin();
+          allow delete: if false;
+        }
+      }
     }
 
-    // ========================================================
-    // --- AQUAPONICS IOT SYSTEM RULES (BAGONG DAGDAG) ---
-    // Pinapahintulutan ang ESP32 (Anonymous Sign-In) na mag-update ng data
-    // ========================================================
+    // ===============================================================
+    // Public Submission Collections
+    // Public users may create only. Admins may review and update later.
+    // ===============================================================
+    match /contact_submissions/{id} {
+      allow create: if isValidContactSubmission();
+      allow read, update: if isAdmin();
+      allow delete: if false;
+    }
+
+    match /inquiry_submissions/{id} {
+      allow create: if isValidInquirySubmission();
+      allow read, update: if isAdmin();
+      allow delete: if false;
+    }
+
+    match /environmental_alerts/{id} {
+      allow read, create, update: if isAdmin();
+      allow delete: if false;
+    }
+
+    // ===============================================================
+    // Admin-Side Web Collections
+    // ===============================================================
+    match /plants/{id} {
+      allow read, write: if isAdmin();
+    }
+
+    match /aquaculture/{id} {
+      allow read, write: if isAdmin();
+    }
+
+    match /notifications/{id} {
+      allow read, write: if isAdmin();
+    }
+
+    match /support_tickets/{id} {
+      allow read, write: if isAdmin();
+    }
+
+    match /ticket_history/{id} {
+      allow read, write: if isAdmin();
+    }
+
+    match /master_sets/{id} {
+      allow read, write: if isAdmin();
+    }
+
+    match /configuration/{id} {
+      allow read, write: if isAdmin();
+    }
+
+    // ===============================================================
+    // Default Fallback
+    // ===============================================================
     match /{document=**} {
-  		allow read, write: if true;
-		}
+      allow read, write: if false;
+    }
   }
 }

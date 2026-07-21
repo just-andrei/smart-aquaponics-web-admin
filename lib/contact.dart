@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import 'about.dart';
@@ -31,6 +32,7 @@ class _ContactPageState extends State<ContactPage> {
   final _emailController = TextEditingController();
   final _subjectController = TextEditingController();
   final _messageController = TextEditingController();
+  bool _isSubmitting = false;
 
   @override
   void dispose() {
@@ -56,6 +58,68 @@ class _ContactPageState extends State<ContactPage> {
       case 'Login':
         Navigator.of(context).pushReplacement(LoginPage.createRoute());
         break;
+    }
+  }
+
+  Future<void> _submitContactForm() async {
+    if (_isSubmitting || !_formKey.currentState!.validate()) {
+      return;
+    }
+
+    setState(() {
+      _isSubmitting = true;
+    });
+
+    final messenger = ScaffoldMessenger.of(context);
+
+    try {
+      await FirebaseFirestore.instance.collection('contact_submissions').add({
+        'name': _fullNameController.text.trim(),
+        'email': _emailController.text.trim(),
+        'subject': _subjectController.text.trim(),
+        'message': _messageController.text.trim(),
+        'createdAt': FieldValue.serverTimestamp(),
+        'status': 'new',
+        'source': 'web',
+      });
+
+      if (!mounted) {
+        return;
+      }
+
+      _formKey.currentState!.reset();
+      _fullNameController.clear();
+      _emailController.clear();
+      _subjectController.clear();
+      _messageController.clear();
+
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Your message has been submitted successfully.'),
+        ),
+      );
+    } on FirebaseException catch (e) {
+      if (!mounted) {
+        return;
+      }
+      messenger.showSnackBar(
+        SnackBar(content: Text('Submission failed: ${e.message ?? e.code}')),
+      );
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Submission failed. Please try again.'),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+        });
+      }
     }
   }
 
@@ -116,6 +180,8 @@ class _ContactPageState extends State<ContactPage> {
                         emailController: _emailController,
                         subjectController: _subjectController,
                         messageController: _messageController,
+                        isSubmitting: _isSubmitting,
+                        onSubmit: _submitContactForm,
                         sectionTitleSize: sectionTitleSize,
                         bodyFontSize: bodySize,
                       ),
@@ -138,6 +204,8 @@ class _ContactPageState extends State<ContactPage> {
                           emailController: _emailController,
                           subjectController: _subjectController,
                           messageController: _messageController,
+                          isSubmitting: _isSubmitting,
+                          onSubmit: _submitContactForm,
                           sectionTitleSize: sectionTitleSize,
                           bodyFontSize: bodySize,
                         ),
@@ -247,6 +315,8 @@ class _ContactFormPanel extends StatelessWidget {
   final TextEditingController emailController;
   final TextEditingController subjectController;
   final TextEditingController messageController;
+  final bool isSubmitting;
+  final Future<void> Function() onSubmit;
   final double sectionTitleSize;
   final double bodyFontSize;
 
@@ -256,6 +326,8 @@ class _ContactFormPanel extends StatelessWidget {
     required this.emailController,
     required this.subjectController,
     required this.messageController,
+    required this.isSubmitting,
+    required this.onSubmit,
     required this.sectionTitleSize,
     required this.bodyFontSize,
   });
@@ -319,18 +391,15 @@ class _ContactFormPanel extends StatelessWidget {
             ),
             const SizedBox(height: 22),
             PublicPageButton(
-              label: 'Send Message',
-              leading: const Icon(Icons.send_rounded, size: 18),
-              onPressed: () {
-                if (!formKey.currentState!.validate()) {
-                  return;
-                }
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Your message has been successfully sent.'),
-                  ),
-                );
-              },
+              label: isSubmitting ? 'Sending...' : 'Send Message',
+              leading: isSubmitting
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.send_rounded, size: 18),
+              onPressed: isSubmitting ? null : onSubmit,
             ),
           ],
         ),

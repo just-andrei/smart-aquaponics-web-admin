@@ -5,12 +5,16 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import 'admin_sidebar.dart';
+import 'grower_growth_status_history_section.dart';
+import 'grower_harvest_records_section.dart';
+import 'grower_monitoring_history_section.dart';
 import 'navigation_provider.dart';
 import 'user_account_service.dart';
 import 'user_system.dart';
 
 
 class GrowerDetailsView extends StatefulWidget {
+  final String userCollection;
   final String userDocId;
   final String userId;
   final String currentUserRole;
@@ -20,6 +24,7 @@ class GrowerDetailsView extends StatefulWidget {
 
   const GrowerDetailsView({
     super.key,
+    required this.userCollection,
     required this.userDocId,
     required this.userId,
     required this.currentUserRole,
@@ -111,155 +116,6 @@ class _GrowerDetailsViewState extends State<GrowerDetailsView> {
     final text = value.toString().trim();
     return text.isEmpty ? fallback : text;
   }
-
-
-  Future<void> _showUpdateSystemDialog(UserSystem system) async {
-    if (!_isAdmin) return;
-    final nameController = TextEditingController(text: system.systemName);
-    final hardwareController = TextEditingController(text: system.hardwareUid);
-    final fishController = TextEditingController(text: system.activeFishId);
-    final plantController = TextEditingController(text: system.activePlantId);
-    final batchController = TextEditingController(
-      text: system.currentBatchNumber == 0
-          ? ''
-          : system.currentBatchNumber.toString(),
-    );
-    final dateController = TextEditingController(
-      text: _formatDate(system.ecosystemStartDate),
-    );
-    DateTime? selectedDate = system.ecosystemStartDate;
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Update System'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameController,
-                decoration: const InputDecoration(
-                  labelText: 'System Name',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: hardwareController,
-                decoration: const InputDecoration(
-                  labelText: 'Hardware UID',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: fishController,
-                decoration: const InputDecoration(
-                  labelText: 'Active Fish ID',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: plantController,
-                decoration: const InputDecoration(
-                  labelText: 'Active Plant ID',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: batchController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Batch #',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: dateController,
-                readOnly: true,
-                decoration: const InputDecoration(
-                  labelText: 'Start Date',
-                  border: OutlineInputBorder(),
-                ),
-                onTap: () async {
-                  final picked = await showDatePicker(
-                    context: context,
-                    initialDate: selectedDate ?? DateTime.now(),
-                    firstDate: DateTime(2000),
-                    lastDate: DateTime(2100),
-                  );
-                  if (picked == null) return;
-                  selectedDate = picked;
-                  dateController.text = _formatDate(picked);
-                },
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Save'),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (confirmed != true) return;
-
-    final data = <String, dynamic>{
-      'system_name': nameController.text.trim(),
-      'hardware_uid': hardwareController.text.trim(),
-      'active_fish_id': fishController.text.trim(),
-      'active_plant_id': plantController.text.trim(),
-      'current_batch_number': int.tryParse(batchController.text.trim()) ?? 0,
-      if (selectedDate != null) 'ecosystem_start_date': Timestamp.fromDate(selectedDate!),
-      'updated_at': FieldValue.serverTimestamp(),
-    };
-
-    await UserAccountService.updateSystemData(
-      widget.userDocId,
-      system.id,
-      data,
-    );
-  }
-
-  Future<void> _confirmDeleteSystem(UserSystem system) async {
-    if (!_isAdmin) return;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete System'),
-        content: Text('Delete "${system.systemName}"? This cannot be undone.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-    await FirebaseFirestore.instance
-        .collection('user')
-        .doc(widget.userDocId)
-        .collection('systems')
-        .doc(system.id)
-        .delete();
-  }
-
   String _formatDate(dynamic value) {
     DateTime? date;
     if (value is DateTime) {
@@ -334,7 +190,7 @@ class _GrowerDetailsViewState extends State<GrowerDetailsView> {
 
     final provisionCode = _generateProvisionCode();
     final doc = FirebaseFirestore.instance
-        .collection('user')
+        .collection(widget.userCollection)
         .doc(widget.userDocId)
         .collection('systems')
         .doc();
@@ -371,7 +227,7 @@ class _GrowerDetailsViewState extends State<GrowerDetailsView> {
   Widget _buildDetailsBody(ColorScheme scheme) {
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
       stream: FirebaseFirestore.instance
-          .collection('user')
+          .collection(widget.userCollection)
           .doc(widget.userDocId)
           .snapshots(),
       builder: (context, userSnapshot) {
@@ -391,12 +247,18 @@ class _GrowerDetailsViewState extends State<GrowerDetailsView> {
         final email = _safeString(data['email'], fallback: widget.userId);
         final phone = _safeString(data['phone_num'], fallback: '-');
         final address = _safeString(data['address'], fallback: '-');
+        final directName = _safeString(data['name']);
         final firstName = _safeString(data['first_name']);
         final lastName = _safeString(data['last_name']);
-        final fullName = '$firstName $lastName'.trim();
+        final fullName = directName.isNotEmpty
+            ? directName
+            : '$firstName $lastName'.trim();
 
         return StreamBuilder<List<UserSystem>>(
-          stream: UserAccountService.watchUserSystems(widget.userDocId),
+          stream: UserAccountService.watchUserSystems(
+            widget.userDocId,
+            userCollection: widget.userCollection,
+          ),
           builder: (context, systemsSnapshot) {
             if (systemsSnapshot.hasError) {
               return Center(
@@ -464,15 +326,16 @@ class _GrowerDetailsViewState extends State<GrowerDetailsView> {
                     (system) => _SystemCard(
                       system: system,
                       label: _systemLabel(system),
+                      growerUid: widget.userDocId,
+                      growerName: fullName.isEmpty ? email : fullName,
+                      growerEmail: email,
                       formatMetric: _formatMetric,
                       formatDate: _formatDate,
                       averages: system.sensorAverages,
+                      userCollection: widget.userCollection,
                       userDocId: widget.userDocId,
                       plantNames: _plantNames,
                       fishNames: _fishNames,
-                      isAdmin: _isAdmin,
-                      onUpdate: () => _showUpdateSystemDialog(system),
-                      onDelete: () => _confirmDeleteSystem(system),
                     ),
                   ),
               ],
@@ -742,28 +605,30 @@ class _ProfileRow extends StatelessWidget {
 class _SystemCard extends StatefulWidget {
   final UserSystem system;
   final String label;
+  final String growerUid;
+  final String growerName;
+  final String growerEmail;
   final String Function(dynamic value, {String fallback}) formatMetric;
   final String Function(dynamic value) formatDate;
   final Map<String, dynamic> averages;
+  final String userCollection;
   final String userDocId;
   final Map<String, String> plantNames;
   final Map<String, String> fishNames;
-  final bool isAdmin;
-  final VoidCallback onUpdate;
-  final VoidCallback onDelete;
 
   const _SystemCard({
     required this.system,
     required this.label,
+    required this.growerUid,
+    required this.growerName,
+    required this.growerEmail,
     required this.formatMetric,
     required this.formatDate,
     required this.averages,
+    required this.userCollection,
     required this.userDocId,
     required this.plantNames,
     required this.fishNames,
-    required this.isAdmin,
-    required this.onUpdate,
-    required this.onDelete,
   });
 
   @override
@@ -777,6 +642,12 @@ class _SystemCardState extends State<_SystemCard> {
     final key = id.trim();
     if (key.isEmpty || key == '-') return 'Not Set';
     return library[key] ?? 'Unknown ($key)';
+  }
+
+  String _displayName(String id, Map<String, String> library) {
+    final key = id.trim();
+    if (key.isEmpty || key == '-') return '';
+    return library[key] ?? key;
   }
 
   Map<String, dynamic> _averagesForRange() {
@@ -824,102 +695,94 @@ class _SystemCardState extends State<_SystemCard> {
                 statusColor: statusColor,
                 statusTextColor: statusTextColor,
               );
-              final actions = _SystemActionSection(
-                onUpdate: widget.isAdmin ? widget.onUpdate : null,
-                onDelete: widget.isAdmin ? widget.onDelete : null,
+              final metrics = _SystemMetricsSection(
+                system: system,
+                formatMetric: widget.formatMetric,
+                formatDate: widget.formatDate,
+                fishNames: widget.fishNames,
+                plantNames: widget.plantNames,
+                resolveName: _resolveName,
               );
-              return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                stream: FirebaseFirestore.instance
-                    .collection('user')
-                    .doc(widget.userDocId)
-                    .collection('systems')
-                    .doc(system.id)
-                    .collection('weekly_logs')
-                    .orderBy('timestamp', descending: true)
-                    .limit(1)
-                    .snapshots(),
-                builder: (context, snapshot) {
-                  final latestDoc = snapshot.data?.docs.isNotEmpty == true
-                      ? snapshot.data!.docs.first.data()
-                      : null;
-                  final lastLogTime =
-                      latestDoc == null ? '-' : widget.formatDate(latestDoc['timestamp']);
-                  final notes = latestDoc == null
-                      ? 'No notes yet.'
-                      : _formatNotes(latestDoc);
-                  final healthStatus = latestDoc == null
-                      ? ''
-                      : _safeText(latestDoc['health_status']);
+              final core = isCompact
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        details,
+                        const SizedBox(height: 12),
+                        metrics,
+                      ],
+                    )
+                  : Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(flex: 4, child: details),
+                        const SizedBox(width: 16),
+                        Expanded(flex: 7, child: metrics),
+                      ],
+                    );
 
-                  final metrics = _SystemMetricsSection(
-                    system: system,
-                    formatMetric: widget.formatMetric,
-                    formatDate: widget.formatDate,
-                    fishNames: widget.fishNames,
-                    plantNames: widget.plantNames,
-                    resolveName: _resolveName,
-                  );
-                  final core = isCompact
-                      ? Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            details,
-                            const SizedBox(height: 12),
-                            metrics,
-                            const SizedBox(height: 12),
-                            actions,
-                          ],
-                        )
-                      : Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(flex: 4, child: details),
-                            const SizedBox(width: 16),
-                            Expanded(flex: 7, child: metrics),
-                            const SizedBox(width: 16),
-                            SizedBox(width: 170, child: actions),
-                          ],
-                        );
-
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      core,
-                      const SizedBox(height: 12),
-                      _SensorAveragesSection(
-                        selectedRange: _selectedRange,
-                        onChanged: (value) {
-                          if (value == null) return;
-                          setState(() => _selectedRange = value);
-                        },
-                        averages: _averagesForRange(),
-                      ),
-                      const SizedBox(height: 12),
-                      _RecentStatusBanner(
-                        healthStatus: healthStatus,
-                        notes: notes,
-                        lastLogTime: lastLogTime,
-                      ),
-                    ],
-                  );
-                },
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  core,
+                  const SizedBox(height: 12),
+                  _SensorAveragesSection(
+                    selectedRange: _selectedRange,
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setState(() => _selectedRange = value);
+                    },
+                    averages: _averagesForRange(),
+                  ),
+                  const SizedBox(height: 12),
+                  GrowerSystemMonitoringSection(
+                    userCollection: widget.userCollection,
+                    userDocId: widget.userDocId,
+                    growerUid: widget.growerUid,
+                    growerName: widget.growerName,
+                    growerEmail: widget.growerEmail,
+                    systemId: system.id,
+                    systemLabel: widget.label,
+                    fallbackHardwareUid: system.hardwareUid,
+                    fallbackIsSystemActive: system.isSystemActive,
+                  ),
+                  const SizedBox(height: 12),
+                  GrowerHarvestRecordsSection(
+                    userCollection: widget.userCollection,
+                    userDocId: widget.userDocId,
+                    growerUid: widget.growerUid,
+                    growerName: widget.growerName,
+                    growerEmail: widget.growerEmail,
+                    systemId: system.id,
+                    systemName: widget.label,
+                    hardwareUid: system.hardwareUid,
+                  ),
+                  const SizedBox(height: 12),
+                  GrowerGrowthStatusHistorySection(
+                    userCollection: widget.userCollection,
+                    userDocId: widget.userDocId,
+                    growerUid: widget.growerUid,
+                    growerName: widget.growerName,
+                    growerEmail: widget.growerEmail,
+                    systemId: system.id,
+                    systemName: widget.label,
+                    hardwareUid: system.hardwareUid,
+                    defaultPlantName: _displayName(
+                      system.activePlantId,
+                      widget.plantNames,
+                    ),
+                    defaultSpeciesName: _displayName(
+                      system.activeFishId,
+                      widget.fishNames,
+                    ),
+                  ),
+                ],
               );
             },
           ),
         ),
       ),
     );
-  }
-
-  String _safeText(dynamic value) {
-    final text = value?.toString().trim() ?? '';
-    return text.isEmpty ? '' : text;
-  }
-
-  String _formatNotes(Map<String, dynamic> data) {
-    final notes = _safeText(data['notes']);
-    if (notes.isNotEmpty) return notes;
-    return 'No notes yet.';
   }
 }
 
@@ -1071,39 +934,6 @@ class _SystemMetricsSection extends StatelessWidget {
   }
 }
 
-class _SystemActionSection extends StatelessWidget {
-  final VoidCallback? onUpdate;
-  final VoidCallback? onDelete;
-
-  const _SystemActionSection({
-    required this.onUpdate,
-    required this.onDelete,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        OutlinedButton(
-          onPressed: onUpdate,
-          child: const Text('Update System'),
-        ),
-        const SizedBox(height: 8),
-        ElevatedButton(
-          onPressed: onDelete,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: scheme.error,
-            foregroundColor: scheme.onError,
-          ),
-          child: const Text('Delete System'),
-        ),
-      ],
-    );
-  }
-}
-
 class _SensorAveragesSection extends StatelessWidget {
   final String selectedRange;
   final ValueChanged<String?> onChanged;
@@ -1188,6 +1018,7 @@ class _SensorAveragesSection extends StatelessWidget {
   }
 }
 
+// ignore: unused_element
 class _RecentStatusBanner extends StatelessWidget {
   final String healthStatus;
   final String notes;

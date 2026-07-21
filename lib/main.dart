@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'app_theme_controller.dart';
+import 'admin_dashboard.dart';
 import 'aquaponics_colors.dart';
 import 'about.dart';
 import 'contact.dart';
+import 'firebase_options.dart';
 import 'inquire.dart';
 import 'login.dart';
+import 'user_account_service.dart';
 
 void main() {
   runApp(const AquaponicsApp());
@@ -49,7 +54,7 @@ class _AquaponicsAppState extends State<AquaponicsApp> {
             ),
             useMaterial3: true,
           ),
-          home: LandingPage(
+          home: AppEntryPage(
             themeMode: themeMode,
             onThemeChanged: _handleThemeChanged,
           ),
@@ -74,10 +79,193 @@ class _AquaponicsAppState extends State<AquaponicsApp> {
                 },
               );
             }
+            if (settings.name == '/login') {
+              return LoginPage.createRoute(
+                themeMode: themeMode,
+                onThemeChanged: _handleThemeChanged,
+              );
+            }
             return null;
           },
         );
       },
+    );
+  }
+}
+
+class AppEntryPage extends StatefulWidget {
+  final ThemeMode themeMode;
+  final ValueChanged<ThemeMode> onThemeChanged;
+
+  const AppEntryPage({
+    super.key,
+    required this.themeMode,
+    required this.onThemeChanged,
+  });
+
+  @override
+  State<AppEntryPage> createState() => _AppEntryPageState();
+}
+
+class _AppEntryPageState extends State<AppEntryPage> {
+  late final Future<void> _firebaseInitFuture = _initializeFirebase();
+
+  Future<void> _initializeFirebase() async {
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+    }
+  }
+
+  Future<void> _signOutToLogin() async {
+    await FirebaseAuth.instance.signOut();
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      LoginPage.createRoute(
+        themeMode: widget.themeMode,
+        onThemeChanged: widget.onThemeChanged,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<void>(
+      future: _firebaseInitFuture,
+      builder: (context, initSnapshot) {
+        if (initSnapshot.connectionState != ConnectionState.done) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        if (initSnapshot.hasError) {
+          return Scaffold(
+            body: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  'Unable to initialize the web app: ${initSnapshot.error}',
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+          );
+        }
+
+        return StreamBuilder<User?>(
+          stream: FirebaseAuth.instance.authStateChanges(),
+          builder: (context, authSnapshot) {
+            if (authSnapshot.connectionState == ConnectionState.waiting) {
+              return const Scaffold(
+                body: Center(child: CircularProgressIndicator()),
+              );
+            }
+
+            final currentUser = authSnapshot.data;
+            if (currentUser == null) {
+              return LandingPage(
+                themeMode: widget.themeMode,
+                onThemeChanged: widget.onThemeChanged,
+              );
+            }
+
+            return FutureBuilder<UserSessionAccess>(
+              future: UserAccountService.resolveSessionAccessForUser(
+                currentUser,
+              ),
+              builder: (context, accessSnapshot) {
+                if (accessSnapshot.connectionState != ConnectionState.done) {
+                  return const Scaffold(
+                    body: Center(child: CircularProgressIndicator()),
+                  );
+                }
+
+                if (accessSnapshot.hasError) {
+                  return _SessionBlockedView(
+                    message:
+                        'Unable to verify your web access right now. Please sign in again.',
+                    onPressed: _signOutToLogin,
+                    actionLabel: 'Sign Out',
+                  );
+                }
+
+                final access =
+                    accessSnapshot.data ??
+                    const UserSessionAccess(
+                      uid: '',
+                      email: '',
+                      role: 'unknown',
+                      status: 'inactive',
+                      sourceCollection: '',
+                      profileData: null,
+                    );
+
+                if (access.isAdmin && access.isActive) {
+                  return AdminDashboard(
+                    themeMode: widget.themeMode,
+                    onThemeChanged: widget.onThemeChanged,
+                  );
+                }
+
+                final message = !access.isActive
+                    ? 'Your account is inactive. Contact an admin before using the web dashboard.'
+                    : 'This web app is for admin accounts only. Grower accounts should use the separate mobile app.';
+
+                return _SessionBlockedView(
+                  message: message,
+                  onPressed: _signOutToLogin,
+                  actionLabel: 'Sign Out',
+                );
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _SessionBlockedView extends StatelessWidget {
+  final String message;
+  final Future<void> Function() onPressed;
+  final String actionLabel;
+
+  const _SessionBlockedView({
+    required this.message,
+    required this.onPressed,
+    required this.actionLabel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 440),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.lock_outline_rounded, size: 56),
+                const SizedBox(height: 16),
+                Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 20),
+                FilledButton(
+                  onPressed: () => onPressed(),
+                  child: Text(actionLabel),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

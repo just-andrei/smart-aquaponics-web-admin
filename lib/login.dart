@@ -62,7 +62,7 @@ class _LoginPageState extends State<LoginPage> {
   @override
   void initState() {
     super.initState();
-    _firebaseInitFuture = _initializeFirebase();
+    _firebaseInitFuture = _initializeAndRestoreSession();
   }
 
   @override
@@ -93,6 +93,54 @@ class _LoginPageState extends State<LoginPage> {
         _firebaseInitError = e.toString();
       });
     }
+  }
+
+  Route _fadeRoute(Widget child) {
+    return PageRouteBuilder(
+      transitionDuration: const Duration(milliseconds: 300),
+      pageBuilder: (context, animation, secondaryAnimation) => child,
+      transitionsBuilder: (context, animation, secondaryAnimation, child) {
+        return FadeTransition(
+          opacity: CurvedAnimation(parent: animation, curve: Curves.easeInOut),
+          child: child,
+        );
+      },
+    );
+  }
+
+  Future<void> _initializeAndRestoreSession() async {
+    await _initializeFirebase();
+    if (_firebaseInitError != null || !_isFirebaseReady || !mounted) return;
+
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) return;
+
+    final access = await UserAccountService.resolveSessionAccessForUser(
+      currentUser,
+    );
+    if (!mounted) return;
+
+    if (access.isAdmin && access.isActive) {
+      Navigator.of(context).pushReplacement(
+        _fadeRoute(
+          AdminDashboard(
+            themeMode: appThemeMode.value,
+            onThemeChanged: setAppThemeMode,
+          ),
+        ),
+      );
+      return;
+    }
+
+    await FirebaseAuth.instance.signOut();
+    if (!mounted) return;
+
+    final message = !access.isActive
+        ? 'Your account is inactive. Contact your admin.'
+        : 'This web app is for admin accounts only. Grower accounts should use the separate mobile app.';
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _showError(message);
+    });
   }
 
   void _showError(String message) {
@@ -153,11 +201,10 @@ class _LoginPageState extends State<LoginPage> {
         );
       }
 
-      final profileRecord = await UserAccountService.getProfileByUid(
-        signedInUser.uid,
+      final access = await UserAccountService.resolveSessionAccessForUser(
+        signedInUser,
       );
-      final profile = profileRecord?.data;
-      if (profile == null) {
+      if (!access.isAuthenticated || access.role == 'unknown') {
         await FirebaseAuth.instance.signOut();
         throw FirebaseAuthException(
           code: 'profile-not-found',
@@ -165,12 +212,7 @@ class _LoginPageState extends State<LoginPage> {
         );
       }
 
-      final role = UserAccountService.normalizeRole(
-        (profile['role'] ?? '').toString(),
-      );
-      final status = (profile['status'] ?? 'active').toString().toLowerCase();
-
-      if (status != 'active') {
+      if (!access.isActive) {
         await FirebaseAuth.instance.signOut();
         throw FirebaseAuthException(
           code: 'account-inactive',
@@ -178,32 +220,22 @@ class _LoginPageState extends State<LoginPage> {
         );
       }
 
-      if (UserAccountService.isGrowerRole(role)) {
+      if (!access.isAdmin) {
         await FirebaseAuth.instance.signOut();
         throw FirebaseAuthException(
           code: 'access-denied',
-          message: 'Grower accounts cannot access this web admin panel.',
+          message:
+              'This web app is for admin accounts only. Grower accounts should use the separate mobile app.',
         );
       }
 
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
-        PageRouteBuilder(
-          transitionDuration: const Duration(milliseconds: 300),
-          pageBuilder: (context, animation, secondaryAnimation) =>
-              AdminDashboard(
-                themeMode: appThemeMode.value,
-                onThemeChanged: setAppThemeMode,
-              ),
-          transitionsBuilder: (context, animation, secondaryAnimation, child) {
-            return FadeTransition(
-              opacity: CurvedAnimation(
-                parent: animation,
-                curve: Curves.easeInOut,
-              ),
-              child: child,
-            );
-          },
+        _fadeRoute(
+          AdminDashboard(
+            themeMode: appThemeMode.value,
+            onThemeChanged: setAppThemeMode,
+          ),
         ),
       );
     } on FirebaseAuthException catch (e) {

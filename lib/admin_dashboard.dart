@@ -5,6 +5,7 @@ import 'admin_sidebar.dart';
 import 'navigation_provider.dart';
 import 'dashboard_view.dart';
 import 'user_management_view.dart';
+import 'messages_view.dart';
 import 'support_tickets_view.dart';
 import 'master_sets_view.dart';
 import 'compatibility_assistant_view.dart';
@@ -28,7 +29,7 @@ class AdminDashboard extends StatefulWidget {
 
 class _AdminDashboardState extends State<AdminDashboard> {
   final NavigationProvider _navigationProvider = NavigationProvider();
-  late Future<_SessionAccess> _accessFuture;
+  late Future<UserSessionAccess> _accessFuture;
   bool _isSidebarCollapsed = false;
 
   void _toggleTheme() {
@@ -97,25 +98,40 @@ class _AdminDashboardState extends State<AdminDashboard> {
     }
   }
 
-  Future<_SessionAccess> _resolveAccess() async {
+  Future<void> _signOutAndGoToLogin() async {
+    await FirebaseAuth.instance.signOut();
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      LoginPage.createRoute(
+        themeMode: appThemeMode.value,
+        onThemeChanged: setAppThemeMode,
+      ),
+    );
+  }
+
+  void _goToLogin() {
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      LoginPage.createRoute(
+        themeMode: appThemeMode.value,
+        onThemeChanged: setAppThemeMode,
+      ),
+    );
+  }
+
+  Future<UserSessionAccess> _resolveAccess() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
-      return const _SessionAccess(role: 'unknown', status: 'inactive');
+      return const UserSessionAccess(
+        uid: '',
+        email: '',
+        role: 'unknown',
+        status: 'inactive',
+        sourceCollection: '',
+        profileData: null,
+      );
     }
-
-    final profileRecord = await UserAccountService.getProfileByUid(user.uid);
-    final profile = profileRecord?.data;
-    final fallbackRole = profileRecord == null
-        ? ''
-        : (profileRecord.collection == 'user'
-              ? 'grower'
-              : profileRecord.collection);
-
-    final role = UserAccountService.normalizeRole(
-      (profile?['role'] ?? fallbackRole).toString(),
-    );
-    final status = (profile?['status'] ?? 'active').toString().toLowerCase();
-    return _SessionAccess(role: role, status: status);
+    return UserAccountService.resolveSessionAccessForUser(user);
   }
 
   // Map to switch views based on selection
@@ -131,10 +147,12 @@ class _AdminDashboardState extends State<AdminDashboard> {
           onToggleTheme: _toggleTheme,
         );
       case 2:
-        return MasterSetsView(userRole: role);
+        return const MessagesView();
       case 3:
-        return const SupportTicketsView();
+        return MasterSetsView(userRole: role);
       case 4:
+        return const SupportTicketsView();
+      case 5:
         return const CompatibilityAssistantView();
       default:
         return const DashboardOverview();
@@ -143,7 +161,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<_SessionAccess>(
+    return FutureBuilder<UserSessionAccess>(
       future: _accessFuture,
       builder: (context, accessSnapshot) {
         if (accessSnapshot.connectionState != ConnectionState.done) {
@@ -164,19 +182,40 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
         final access =
             accessSnapshot.data ??
-            const _SessionAccess(role: 'unknown', status: 'inactive');
+            const UserSessionAccess(
+              uid: '',
+              email: '',
+              role: 'unknown',
+              status: 'inactive',
+              sourceCollection: '',
+              profileData: null,
+            );
         final role = access.role;
         final status = access.status;
 
-        if (UserAccountService.isGrowerRole(role)) {
+        if (!access.isAuthenticated) {
           return _AccessDeniedView(
-            message: 'Grower accounts cannot access the web admin dashboard.',
+            message:
+                'Please sign in with an admin account to access the web dashboard.',
+            actionLabel: 'Go to Login',
+            onPressed: _goToLogin,
           );
         }
 
-        if (status == 'inactive') {
+        if (!access.isAdmin) {
+          return _AccessDeniedView(
+            message:
+                'This web app is for admin accounts only. Grower accounts should use the separate mobile app.',
+            actionLabel: 'Sign Out',
+            onPressed: _signOutAndGoToLogin,
+          );
+        }
+
+        if (status != 'active') {
           return _AccessDeniedView(
             message: 'Your account is inactive. Contact an admin.',
+            actionLabel: 'Sign Out',
+            onPressed: _signOutAndGoToLogin,
           );
         }
 
@@ -185,7 +224,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
           builder: (context, child) {
             return LayoutBuilder(
               builder: (context, constraints) {
-                const tabCount = 5;
+                const tabCount = 6;
                 final selectedIndex =
                     _navigationProvider.selectedIndex < tabCount
                     ? _navigationProvider.selectedIndex
@@ -312,17 +351,16 @@ class _AdminDashboardState extends State<AdminDashboard> {
   }
 }
 
-class _SessionAccess {
-  final String role;
-  final String status;
-
-  const _SessionAccess({required this.role, required this.status});
-}
-
 class _AccessDeniedView extends StatelessWidget {
   final String message;
+  final String actionLabel;
+  final VoidCallback onPressed;
 
-  const _AccessDeniedView({required this.message});
+  const _AccessDeniedView({
+    required this.message,
+    required this.actionLabel,
+    required this.onPressed,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -343,10 +381,7 @@ class _AccessDeniedView extends StatelessWidget {
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
                 const SizedBox(height: 16),
-                FilledButton(
-                  onPressed: () => FirebaseAuth.instance.signOut(),
-                  child: const Text('Logout'),
-                ),
+                FilledButton(onPressed: onPressed, child: Text(actionLabel)),
               ],
             ),
           ),
