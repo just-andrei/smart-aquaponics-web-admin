@@ -8,7 +8,6 @@ import 'user_management_view.dart';
 import 'messages_view.dart';
 import 'support_tickets_view.dart';
 import 'master_sets_view.dart';
-import 'compatibility_assistant_view.dart';
 import 'user_account_service.dart';
 import 'login.dart';
 import 'aquaponics_colors.dart';
@@ -152,8 +151,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
         return MasterSetsView(userRole: role);
       case 4:
         return const SupportTicketsView();
-      case 5:
-        return const CompatibilityAssistantView();
       default:
         return const DashboardOverview();
     }
@@ -224,7 +221,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
           builder: (context, child) {
             return LayoutBuilder(
               builder: (context, constraints) {
-                const tabCount = 6;
+                const tabCount = 5;
                 final selectedIndex =
                     _navigationProvider.selectedIndex < tabCount
                     ? _navigationProvider.selectedIndex

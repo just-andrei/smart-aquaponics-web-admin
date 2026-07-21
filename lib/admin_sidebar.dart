@@ -49,11 +49,6 @@ class AdminSidebar extends StatelessWidget {
         icon: Icons.support_agent_rounded,
         label: 'Support Tickets',
       ),
-      const _NavItem(
-        index: 5,
-        icon: Icons.auto_awesome_rounded,
-        label: 'Compatibility',
-      ),
     ];
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
